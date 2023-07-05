@@ -5,14 +5,14 @@ import "forge-std/Test.sol";
 import { IERC20 } from "openzeppelin/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
 
-import { LiquidationPairFactory } from "src/LiquidationPairFactory.sol";
-import { LiquidationPair } from "src/LiquidationPair.sol";
-import { LiquidationRouter } from "src/LiquidationRouter.sol";
+import { LiquidationPairFactory } from "../src/LiquidationPairFactory.sol";
+import { LiquidationPair } from "../src/LiquidationPair.sol";
+import { LiquidationRouter } from "../src/LiquidationRouter.sol";
 
-import { ILiquidationSource } from "src/interfaces/ILiquidationSource.sol";
+import { ILiquidationSource } from "../src/interfaces/ILiquidationSource.sol";
 
-import { LiquidatorLib } from "src/libraries/LiquidatorLib.sol";
-import { UFixed32x4 } from "src/libraries/FixedMathLib.sol";
+import { LiquidatorLib } from "../src/libraries/LiquidatorLib.sol";
+import { UFixed32x4 } from "../src/libraries/FixedMathLib.sol";
 
 import { BaseSetup } from "./utils/BaseSetup.sol";
 

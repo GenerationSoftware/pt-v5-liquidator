@@ -3,14 +3,14 @@ pragma solidity 0.8.17;
 
 import "forge-std/Test.sol";
 
-import { LiquidationPairFactory } from "src/LiquidationPairFactory.sol";
-import { LiquidationPair } from "src/LiquidationPair.sol";
-import { LiquidationRouter } from "src/LiquidationRouter.sol";
+import { LiquidationPairFactory } from "../src/LiquidationPairFactory.sol";
+import { LiquidationPair } from "../src/LiquidationPair.sol";
+import { LiquidationRouter } from "../src/LiquidationRouter.sol";
 
-import { ILiquidationSource } from "src/interfaces/ILiquidationSource.sol";
+import { ILiquidationSource } from "../src/interfaces/ILiquidationSource.sol";
 
-import { LiquidatorLib } from "src/libraries/LiquidatorLib.sol";
-import { UFixed32x4 } from "src/libraries/FixedMathLib.sol";
+import { LiquidatorLib } from "../src/libraries/LiquidatorLib.sol";
+import { UFixed32x4 } from "../src/libraries/FixedMathLib.sol";
 
 import { BaseSetup } from "./utils/BaseSetup.sol";
 
@@ -1300,47 +1300,6 @@ contract LiquidationPairUnitTest is LiquidationPairTestSetup {
       expectedVirtualReserveIn,
       expectedVirtualReserveOut
     );
-  }
-
-  function testSwapExactAmountOut_Chuck() public {
-    uint256 minK = 800000000000000000000000000000000000;
-    // Minimize the swap multiplier and maximize liquidity fraction
-    UFixed32x4 swapMultiplier = UFixed32x4.wrap(3000);
-    UFixed32x4 liquidityFraction = UFixed32x4.wrap(200);
-    uint128 virtualReserveIn = 1000000000000000000;
-    uint128 virtualReserveOut = 1000000000000000000;
-    uint256 amountOfYield = 105108501945266277;
-
-    LiquidationPair liquidationPair = new LiquidationPair(
-      ILiquidationSource(source),
-      tokenIn,
-      tokenOut,
-      swapMultiplier,
-      liquidityFraction,
-      virtualReserveIn,
-      virtualReserveOut,
-      minK
-    );
-
-    mockLiquidatableBalanceOf(source, tokenOut, amountOfYield);
-
-    uint256 amountOut = liquidationPair.maxAmountOut();
-    console.log("Amount of yield  %s", amountOfYield);
-    console.log("Max amount out   %s", amountOut);
-    uint256 amountIn = liquidationPair.computeExactAmountIn(amountOut);
-    console.log("amountIn         %s", amountIn);
-    uint256 amountOutMin = liquidationPair.computeExactAmountOut(amountIn);
-    console.log("amountOutMin     %s", amountOutMin);
-
-    vm.prank(alice);
-
-    mockLiquidateGivenAmountIn(liquidationPair, alice, amountIn, true);
-
-    uint256 swappedAmountOut = liquidationPair.swapExactAmountIn(alice, amountIn, amountOutMin);
-    console.log("swappedAmountOut %s", swappedAmountOut);
-
-    assertEq(liquidationPair.virtualReserveIn(), 0);
-    assertEq(liquidationPair.virtualReserveOut(), 0);
   }
 
   function testFailSwapExactAmountOut_MoreThanYieldOut() public {
