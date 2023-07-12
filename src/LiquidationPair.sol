@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.17;
 
-import "./libraries/LiquidatorLib.sol";
-import "./libraries/FixedMathLib.sol";
-import "./interfaces/ILiquidationSource.sol";
-import { Math } from "openzeppelin/utils/math/Math.sol";
+import { ILiquidationSource } from "./interfaces/ILiquidationSource.sol";
+import { LiquidatorLib } from "./libraries/LiquidatorLib.sol";
+import { SD59x18, convert, MAX_SD59x18 } from "prb-math/SD59x18.sol";
+
+import { console2 } from "forge-std/console2.sol";
 
 /**
  * @title PoolTogether Liquidation Pair
@@ -31,12 +32,21 @@ contract LiquidationPair {
   ILiquidationSource public immutable source;
   address public immutable tokenIn;
   address public immutable tokenOut;
-  UFixed32x4 public immutable swapMultiplier;
-  UFixed32x4 public immutable liquidityFraction;
+  SD59x18 public targetExchangeRate; // tokenIn/tokenOut.
+  SD59x18 public discoveryDeltaPercent; // % of time to use discovery curve
+  // TODO: Adjust math st discoveryRate is a percentage to explore for the duration of phase 2. Make it a function of targetExchangeRate.
+  SD59x18 public discoveryRate; // Rate to increase the discovery curve exchange rate by each second
+  SD59x18 public exchangeRateSmoothing = convert(5); // Smooths the curve when the exchange rate is in phase 1 or phase 3.
 
-  uint128 public virtualReserveIn;
-  uint128 public virtualReserveOut;
-  uint256 public immutable minK;
+  SD59x18 public immutable phaseOneEndPercent;
+  SD59x18 public immutable phaseTwoEndPercent;
+
+  /// @notice Sets the period of liquidations.
+  uint32 public immutable periodLength;
+
+  /// @notice Sets the beginning timestamp for the first period.
+  /// @dev Ensure that the periodOffset is in the past.
+  uint32 public immutable periodOffset;
 
   /* ============ Events ============ */
 
@@ -58,63 +68,27 @@ contract LiquidationPair {
 
   /* ============ Constructor ============ */
 
-  /**
-   * @notice Construct a new LiquidationPair.
-   * @param _source The source of yield for the liquidation pair.
-   * @param _tokenIn The token to be swapped in.
-   * @param _tokenOut The token to be swapped out.
-   * @param _swapMultiplier The multiplier for the users swaps.
-   * @param _liquidityFraction The liquidity fraction to be applied after swapping.
-   * @param _virtualReserveIn The initial virtual reserve of token in.
-   * @param _virtualReserveOut The initial virtual reserve of token out.
-   * @param _minK The minimum value of k.
-   * @dev The swap multiplier and liquidity fraction are represented as UFixed32x4.
-   */
   constructor(
     ILiquidationSource _source,
     address _tokenIn,
     address _tokenOut,
-    UFixed32x4 _swapMultiplier,
-    UFixed32x4 _liquidityFraction,
-    uint128 _virtualReserveIn,
-    uint128 _virtualReserveOut,
-    uint256 _minK
+    SD59x18 _initialTargetExchangeRate,
+    SD59x18 _discoveryDeltaPercent,
+    SD59x18 _discoveryRate,
+    uint32 _periodLength,
+    uint32 _periodOffset
   ) {
-    require(
-      UFixed32x4.unwrap(_liquidityFraction) > 0,
-      "LiquidationPair/liquidity-fraction-greater-than-zero"
-    );
-    require(
-      UFixed32x4.unwrap(_liquidityFraction) > 0,
-      "LiquidationPair/liquidity-fraction-greater-than-zero"
-    );
-    require(
-      UFixed32x4.unwrap(_swapMultiplier) <= 1e4,
-      "LiquidationPair/swap-multiplier-less-than-one"
-    );
-    require(
-      UFixed32x4.unwrap(_liquidityFraction) <= 1e4,
-      "LiquidationPair/liquidity-fraction-less-than-one"
-    );
-    require(
-      uint256(_virtualReserveIn) * _virtualReserveOut >= _minK,
-      "LiquidationPair/virtual-reserves-greater-than-min-k"
-    );
-    require(_minK > 0, "LiquidationPair/min-k-greater-than-zero");
-    require(_virtualReserveIn <= type(uint112).max, "LiquidationPair/virtual-reserve-in-too-large");
-    require(
-      _virtualReserveOut <= type(uint112).max,
-      "LiquidationPair/virtual-reserve-out-too-large"
-    );
-
     source = _source;
     tokenIn = _tokenIn;
     tokenOut = _tokenOut;
-    swapMultiplier = _swapMultiplier;
-    liquidityFraction = _liquidityFraction;
-    virtualReserveIn = _virtualReserveIn;
-    virtualReserveOut = _virtualReserveOut;
-    minK = _minK;
+    targetExchangeRate = _initialTargetExchangeRate;
+    discoveryDeltaPercent = _discoveryDeltaPercent;
+    discoveryRate = _discoveryRate;
+    periodLength = _periodLength;
+    periodOffset = _periodOffset;
+
+    phaseOneEndPercent = convert(50).sub(discoveryDeltaPercent);
+    phaseTwoEndPercent = convert(50).add(discoveryDeltaPercent);
   }
 
   /* ============ External Methods ============ */
@@ -132,15 +106,7 @@ contract LiquidationPair {
    * @notice Computes the maximum amount of tokens that can be swapped in given the current state of the liquidation pair.
    * @return The maximum amount of tokens that can be swapped in.
    */
-  function maxAmountIn() external view returns (uint256) {
-    return
-      LiquidatorLib.computeExactAmountIn(
-        virtualReserveIn,
-        virtualReserveOut,
-        _availableReserveOut(),
-        _availableReserveOut()
-      );
-  }
+  function maxAmountIn() external view returns (uint256) {}
 
   /**
    * @notice Gets the maximum amount of tokens that can be swapped out from the source.
@@ -150,119 +116,172 @@ contract LiquidationPair {
     return _availableReserveOut();
   }
 
-  /**
-   * @notice Computes the virtual reserves post virtual buyback of all available liquidity that has accrued.
-   * @return The virtual reserve of the token in.
-   * @return The virtual reserve of the token out.
-   */
-  function nextLiquidationState() external view returns (uint128, uint128) {
-    return
-      LiquidatorLib._virtualBuyback(virtualReserveIn, virtualReserveOut, _availableReserveOut());
+  function getTimeElapsed() external view returns (uint32) {
+    return _getTimeElapsed();
   }
 
-  /**
-   * @notice Computes the exact amount of tokens to send in for the given amount of tokens to receive out.
-   * @param _amountOut The amount of tokens to receive out.
-   * @return The amount of tokens to send in.
-   */
-  function computeExactAmountIn(uint256 _amountOut) external view returns (uint256) {
-    return
-      LiquidatorLib.computeExactAmountIn(
-        virtualReserveIn,
-        virtualReserveOut,
-        _availableReserveOut(),
-        _amountOut
-      );
+  function getPeriodStartTimestamp() external view returns (uint32) {
+    return _getPeriodStartTimestamp(uint32(block.timestamp));
   }
 
-  /**
-   * @notice Computes the exact amount of tokens to receive out for the given amount of tokens to send in.
-   * @param _amountIn The amount of tokens to send in.
-   * @return The amount of tokens to receive out.
-   */
-  function computeExactAmountOut(uint256 _amountIn) external view returns (uint256) {
-    return
-      LiquidatorLib.computeExactAmountOut(
-        virtualReserveIn,
-        virtualReserveOut,
-        _availableReserveOut(),
-        _amountIn
-      );
+  function getPeriodStartTimestamp(uint32 timestamp) external view returns (uint32) {
+    return _getPeriodStartTimestamp(timestamp);
   }
 
-  /* ============ Write Methods ============ */
-
-  /**
-   * @notice Swaps the given amount of tokens in and ensures a minimum amount of tokens are received out.
-   * @dev The amount of tokens being swapped in must be sent to the target before calling this function.
-   * @param _account The address to send the tokens to.
-   * @param _amountIn The amount of tokens sent in.
-   * @param _amountOutMin The minimum amount of tokens to receive out.
-   * @return The amount of tokens received out.
-   */
-  function swapExactAmountIn(
-    address _account,
-    uint256 _amountIn,
-    uint256 _amountOutMin
-  ) external returns (uint256) {
-    uint256 availableBalance = _availableReserveOut();
-    (uint128 _virtualReserveIn, uint128 _virtualReserveOut, uint256 amountOut) = LiquidatorLib
-      .swapExactAmountIn(
-        virtualReserveIn,
-        virtualReserveOut,
-        availableBalance,
-        _amountIn,
-        swapMultiplier,
-        liquidityFraction,
-        minK
-      );
-
-    virtualReserveIn = _virtualReserveIn;
-    virtualReserveOut = _virtualReserveOut;
-
-    require(amountOut >= _amountOutMin, "LiquidationPair/min-not-guaranteed");
-    _swap(_account, amountOut, _amountIn);
-
-    emit Swapped(_account, _amountIn, amountOut, _virtualReserveIn, _virtualReserveOut);
-
-    return amountOut;
+  function getTimestampPeriod() external view returns (uint32) {
+    return _getTimestampPeriod(uint32(block.timestamp));
   }
 
-  /**
-   * @notice Swaps the given amount of tokens out and ensures the amount of tokens in doesn't exceed the given maximum.
-   * @dev The amount of tokens being swapped in must be sent to the target before calling this function.
-   * @param _account The address to send the tokens to.
-   * @param _amountOut The amount of tokens to receive out.
-   * @param _amountInMax The maximum amount of tokens to send in.
-   * @return The amount of tokens sent in.
-   */
+  function getTimestampPeriod(uint32 timestamp) external view returns (uint32) {
+    return _getTimestampPeriod(timestamp);
+  }
+
+  // /**
+  //  * @notice Computes the virtual reserves post virtual buyback of all available liquidity that has accrued.
+  //  * @return The virtual reserve of the token in.
+  //  * @return The virtual reserve of the token out.
+  //  */
+  // function nextLiquidationState() external view returns (uint128, uint128) {
+  //   return
+  //     LiquidatorLib._virtualBuyback(virtualReserveIn, virtualReserveOut, _availableReserveOut());
+  // }
+
+  // /**
+  //  * @notice Computes the exact amount of tokens to receive out for the given amount of tokens to send in.
+  //  * @param _amountIn The amount of tokens to send in.
+  //  * @return The amount of tokens to receive out.
+  //  */
+  // function computeExactAmountOut(uint256 _amountIn) external view returns (uint256) {
+  //   return
+  //     LiquidatorLib.computeExactAmountOut(
+  //       virtualReserveIn,
+  //       virtualReserveOut,
+  //       _availableReserveOut(),
+  //       _amountIn
+  //     );
+  // }
+
+  /* ============ External Methods ============ */
+
+  function getAuctionState() external view returns (SD59x18 percentCompleted, uint8 phase) {
+    return _getAuctionState();
+  }
+
   function swapExactAmountOut(
     address _account,
-    uint256 _amountOut,
-    uint256 _amountInMax
-  ) external returns (uint256) {
-    uint256 availableBalance = _availableReserveOut();
-    (uint128 _virtualReserveIn, uint128 _virtualReserveOut, uint256 amountIn) = LiquidatorLib
-      .swapExactAmountOut(
-        virtualReserveIn,
-        virtualReserveOut,
-        availableBalance,
-        _amountOut,
-        swapMultiplier,
-        liquidityFraction,
-        minK
-      );
-    virtualReserveIn = _virtualReserveIn;
-    virtualReserveOut = _virtualReserveOut;
-    require(amountIn <= _amountInMax, "LiquidationPair/max-not-guaranteed");
-    _swap(_account, _amountOut, amountIn);
+    SD59x18 _amountOut,
+    SD59x18 _amountInMax
+  ) external returns (SD59x18) {
+    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
 
-    emit Swapped(_account, amountIn, _amountOut, _virtualReserveIn, _virtualReserveOut);
+    SD59x18 exchangeRate = LiquidatorLib.getExchangeRate(
+      phase,
+      percentCompleted,
+      exchangeRateSmoothing,
+      discoveryRate,
+      discoveryDeltaPercent,
+      targetExchangeRate
+    );
+    SD59x18 amountIn = _computeAmountIn(_amountOut, exchangeRate);
+
+    require(amountIn.lte(_amountInMax), "LiquidationPair/amount-in-exceeds-max");
+    _updateTargetExchangeRate(exchangeRate);
+    _swap(_account, _amountOut, amountIn);
 
     return amountIn;
   }
 
+  function computeAmountIn(SD59x18 _amountOut) external returns (SD59x18) {
+    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
+
+    console2.log("percentCompleted", convert(percentCompleted));
+    console2.log("phase", phase);
+
+    (bool success, bytes memory returnData) = address(this).delegatecall(
+      abi.encodeWithSelector(
+        this.getExchangeRate.selector,
+        phase,
+        percentCompleted,
+        exchangeRateSmoothing,
+        discoveryRate,
+        discoveryDeltaPercent,
+        targetExchangeRate
+      )
+    );
+
+    SD59x18 exchangeRate;
+    if (success) {
+      exchangeRate = abi.decode(returnData, (SD59x18));
+      // If exchange rate is negative, force to 0
+      if (exchangeRate.lte(convert(0))) {
+        return convert(0);
+      }
+    } else if (phase == 1) {
+      return convert(0);
+    } else if (phase == 3) {
+      // NOTE: This might be too big.
+      return MAX_SD59x18;
+    }
+
+    console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
+    // NOTE: There's a chance of overflow/underflow within phase 2.
+    // Need a smarter check for what value to return in that case.
+    return _computeAmountIn(_amountOut, exchangeRate);
+  }
+
+  function computeAmountIn(
+    SD59x18 _amountOut,
+    SD59x18 exchangeRate
+  ) external view returns (SD59x18) {
+    return _computeAmountIn(_amountOut, exchangeRate);
+  }
+
+  function computeAmountOut(
+    SD59x18 _amountIn,
+    SD59x18 exchangeRate
+  ) external view returns (SD59x18) {
+    return _computeAmountOut(_amountIn, exchangeRate);
+  }
+
+  function getExchangeRate(
+    uint8 _phase,
+    SD59x18 _percentCompleted,
+    SD59x18 _exchangeRateSmoothing,
+    SD59x18 _discoveryRate,
+    SD59x18 _discoveryDeltaPercent,
+    SD59x18 _targetExchangeRate
+  ) public view returns (SD59x18 exchangeRate) {
+    return
+      LiquidatorLib.getExchangeRate(
+        _phase,
+        _percentCompleted,
+        _exchangeRateSmoothing,
+        _discoveryRate,
+        discoveryDeltaPercent,
+        _targetExchangeRate
+      );
+  }
+
   /* ============ Internal Functions ============ */
+
+  function _updateTargetExchangeRate(SD59x18 _exchangeRate) internal {
+    // NOTE: Need to update a separate variable, otherwise the curves will change mid auction.
+    targetExchangeRate = targetExchangeRate.add(_exchangeRate).div(convert(2));
+  }
+
+  function _computeAmountIn(
+    SD59x18 _amountOut,
+    SD59x18 exchangeRate
+  ) internal pure returns (SD59x18) {
+    return _amountOut.mul(exchangeRate);
+  }
+
+  function _computeAmountOut(
+    SD59x18 _amountIn,
+    SD59x18 exchangeRate
+  ) internal pure returns (SD59x18) {
+    return _amountIn.div(exchangeRate);
+  }
 
   /**
    * @notice Gets the available liquidity that has accrued that users can swap for.
@@ -278,7 +297,50 @@ contract LiquidationPair {
    * @param _amountOut The amount of tokens to receive out.
    * @param _amountIn The amount of tokens sent in.
    */
-  function _swap(address _account, uint256 _amountOut, uint256 _amountIn) internal {
-    source.liquidate(_account, tokenIn, _amountIn, tokenOut, _amountOut);
+  function _swap(address _account, SD59x18 _amountOut, SD59x18 _amountIn) internal {
+    source.liquidate(
+      _account,
+      tokenIn,
+      uint256(convert(_amountIn)),
+      tokenOut,
+      uint256(convert(_amountOut))
+    );
+  }
+
+  function _getAuctionState() internal view returns (SD59x18 percentCompleted, uint8 phase) {
+    uint32 timeElapsed = _getTimeElapsed();
+
+    percentCompleted = timeElapsed > 0
+      ? convert(int(uint(timeElapsed))).div(convert(int(uint(periodLength)))).mul(convert(100))
+      : convert(0);
+
+    if (percentCompleted.lte(phaseOneEndPercent)) {
+      phase = 1;
+    } else if (percentCompleted.lte(phaseTwoEndPercent)) {
+      phase = 2;
+    } else {
+      phase = 3;
+    }
+  }
+
+  function _getTimeElapsed() internal view returns (uint32) {
+    return
+      uint32(block.timestamp) > periodOffset
+        ? uint32(block.timestamp) - _getPeriodStartTimestamp(uint32(block.timestamp))
+        : 0;
+  }
+
+  function _getPeriodStartTimestamp(uint32 _timestamp) private view returns (uint32 timestamp) {
+    uint32 period = _getTimestampPeriod(_timestamp);
+    return period > 0 ? periodOffset + ((period - 1) * periodLength) : 0;
+  }
+
+  function _getTimestampPeriod(uint32 _timestamp) private view returns (uint32 period) {
+    if (_timestamp <= periodOffset) {
+      return 0;
+    }
+    // Shrink by 1 to ensure periods end on a multiple of periodLength.
+    // Increase by 1 to start periods at # 1.
+    return ((_timestamp - periodOffset - 1) / periodLength) + 1;
   }
 }
