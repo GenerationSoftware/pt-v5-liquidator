@@ -10,15 +10,15 @@ contract MockLiquidatorLib {
   function getExchangeRatePhase1(
     SD59x18 percentCompleted,
     SD59x18 exchangeRateSmoothing,
-    SD59x18 discoveryRate,
-    SD59x18 discoveryDelta,
+    SD59x18 phaseTwoRangeRate,
+    SD59x18 phaseTwoDurationPercentHalved,
     SD59x18 targetExchangeRate
   ) public view returns (SD59x18) {
     SD59x18 exchangeRate = LiquidatorLib.getExchangeRatePhase1(
       percentCompleted,
       exchangeRateSmoothing,
-      discoveryRate,
-      discoveryDelta,
+      phaseTwoRangeRate,
+      phaseTwoDurationPercentHalved,
       targetExchangeRate
     );
     return exchangeRate;
@@ -26,12 +26,12 @@ contract MockLiquidatorLib {
 
   function getExchangeRatePhase2(
     SD59x18 percentCompleted,
-    SD59x18 discoveryRate,
+    SD59x18 phaseTwoRangeRate,
     SD59x18 targetExchangeRate
   ) public view returns (SD59x18) {
     SD59x18 exchangeRate = LiquidatorLib.getExchangeRatePhase2(
       percentCompleted,
-      discoveryRate,
+      phaseTwoRangeRate,
       targetExchangeRate
     );
     return exchangeRate;
@@ -40,15 +40,15 @@ contract MockLiquidatorLib {
   function getExchangeRatePhase3(
     SD59x18 percentCompleted,
     SD59x18 exchangeRateSmoothing,
-    SD59x18 discoveryRate,
-    SD59x18 discoveryDelta,
+    SD59x18 phaseTwoRangeRate,
+    SD59x18 phaseTwoDurationPercentHalved,
     SD59x18 targetExchangeRate
   ) public view returns (SD59x18) {
     SD59x18 exchangeRate = LiquidatorLib.getExchangeRatePhase3(
       percentCompleted,
       exchangeRateSmoothing,
-      discoveryRate,
-      discoveryDelta,
+      phaseTwoRangeRate,
+      phaseTwoDurationPercentHalved,
       targetExchangeRate
     );
     return exchangeRate;

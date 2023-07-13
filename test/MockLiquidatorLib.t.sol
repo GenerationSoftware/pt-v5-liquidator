@@ -9,14 +9,17 @@ import { BaseSetup } from "./utils/BaseSetup.sol";
 import { MockLiquidatorLib } from "./mocks/MockLiquidatorLib.sol";
 import { LiquidatorLib } from "../src/libraries/LiquidatorLib.sol";
 
-contract BaseLiquidatorLibTest is BaseSetup {
+contract LiquidatorLibTest is BaseSetup {
   /* ============ Variables ============ */
 
   MockLiquidatorLib public mockLiquidatorLib;
-  SD59x18 defaultExchangeRateSmoothing = convert(5);
-  SD59x18 defaultDiscoveryRate = LiquidatorLib.toSD59x18Percentage(20);
-  SD59x18 defaultDiscoveryDelta = convert(20);
   SD59x18 defaultTargetExchangeRate = convert(1);
+  SD59x18 defaultExchangeRateSmoothing = convert(5);
+  SD59x18 defaultPhaseTwoDurationPercentHalved = convert(20);
+  SD59x18 phaseTwoRangePercentHalved = convert(20);
+  // Computed based on phase 2 target price and phase 2 range
+  SD59x18 defaultPhaseTwoRangeRate =
+    defaultTargetExchangeRate.mul(phaseTwoRangePercentHalved).div(convert(100));
 
   /* ============ Set up ============ */
 
@@ -33,14 +36,14 @@ contract BaseLiquidatorLibTest is BaseSetup {
     exchangeRate = mockLiquidatorLib.getExchangeRatePhase1(
       percentCompleted,
       defaultExchangeRateSmoothing,
-      defaultDiscoveryRate,
-      defaultDiscoveryDelta,
+      defaultPhaseTwoRangeRate,
+      defaultPhaseTwoDurationPercentHalved,
       defaultTargetExchangeRate
     );
     assertEq(SD59x18.unwrap(exchangeRate), expectedExchangeRate);
     exchangeRate = mockLiquidatorLib.getExchangeRatePhase2(
       percentCompleted,
-      defaultDiscoveryRate,
+      defaultPhaseTwoRangeRate,
       defaultTargetExchangeRate
     );
     assertEq(SD59x18.unwrap(exchangeRate), expectedExchangeRate);
@@ -50,7 +53,7 @@ contract BaseLiquidatorLibTest is BaseSetup {
     SD59x18 exchangeRate;
     exchangeRate = mockLiquidatorLib.getExchangeRatePhase2(
       convert(50),
-      defaultDiscoveryRate,
+      defaultPhaseTwoRangeRate,
       defaultTargetExchangeRate
     );
     assertEq(SD59x18.unwrap(exchangeRate), 1e18);
@@ -64,14 +67,14 @@ contract BaseLiquidatorLibTest is BaseSetup {
     exchangeRate = mockLiquidatorLib.getExchangeRatePhase3(
       percentCompleted,
       defaultExchangeRateSmoothing,
-      defaultDiscoveryRate,
-      defaultDiscoveryDelta,
+      defaultPhaseTwoRangeRate,
+      defaultPhaseTwoDurationPercentHalved,
       defaultTargetExchangeRate
     );
     assertEq(SD59x18.unwrap(exchangeRate), expectedExchangeRate);
     exchangeRate = mockLiquidatorLib.getExchangeRatePhase2(
       percentCompleted,
-      defaultDiscoveryRate,
+      defaultPhaseTwoRangeRate,
       defaultTargetExchangeRate
     );
     assertEq(SD59x18.unwrap(exchangeRate), expectedExchangeRate);

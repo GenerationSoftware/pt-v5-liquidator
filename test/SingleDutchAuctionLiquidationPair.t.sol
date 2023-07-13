@@ -17,9 +17,9 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
   address public tokenOut;
   address public source;
   address public target;
-  SD59x18 defaultTargetExchangeRate = convert(1);
-  SD59x18 defaultDiscoveryRate = LiquidatorLib.toSD59x18Percentage(20);
-  SD59x18 defaultDiscoveryDeltaPercent = convert(20);
+  SD59x18 public defaultTargetExchangeRate;
+  SD59x18 public defaultPhaseTwoRangePercent;
+  SD59x18 public defaultPhaseTwoDurationPercent;
   LiquidationPair public pair;
 
   /* ============ Set up ============ */
@@ -30,14 +30,19 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     tokenOut = utils.generateAddress("tokenOut");
     source = utils.generateAddress("source");
     target = utils.generateAddress("target");
+
+    defaultTargetExchangeRate = convert(1);
+    defaultPhaseTwoRangePercent = convert(10);
+    defaultPhaseTwoDurationPercent = convert(20);
+
     // Contract setup
     pair = new LiquidationPair(
       ILiquidationSource(source),
       tokenIn,
       tokenOut,
       defaultTargetExchangeRate,
-      defaultDiscoveryDeltaPercent,
-      defaultDiscoveryRate,
+      defaultPhaseTwoDurationPercent,
+      defaultPhaseTwoRangePercent,
       drawLength,
       drawOffset
     );
@@ -272,30 +277,30 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     // With .5 OUT -> .25 IN
     amountOut = SD59x18.wrap(50e16);
     amountIn = pair.computeAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 25e16);
+    assertEq(SD59x18.unwrap(amountIn), 1e18);
     // With 1 OUT -> .5 IN
     amountOut = convert(1);
     amountIn = pair.computeAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 50e16);
+    assertEq(SD59x18.unwrap(amountIn), 2e18);
     // With 2 OUT -> 1 IN
     amountOut = convert(2);
     amountIn = pair.computeAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 1e18);
+    assertEq(SD59x18.unwrap(amountIn), 4e18);
 
     // 2 IN : 1 OUT
     exchangeRate = convert(2);
     // With .5 OUT -> 1 IN
     amountOut = SD59x18.wrap(50e16);
     amountIn = pair.computeAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 1e18);
+    assertEq(SD59x18.unwrap(amountIn), 25e16);
     // With 1 OUT -> 2 IN
     amountOut = convert(1);
     amountIn = pair.computeAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 2e18);
+    assertEq(SD59x18.unwrap(amountIn), 50e16);
     // With 2 OUT -> 4 IN
     amountOut = convert(2);
     amountIn = pair.computeAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 4e18);
+    assertEq(SD59x18.unwrap(amountIn), 1e18);
   }
 
   // Exchange rate is IN per OUT
@@ -324,211 +329,276 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     // With .5 IN -> 1 OUT
     amountIn = SD59x18.wrap(50e16);
     amountOut = pair.computeAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 1e18);
+    assertEq(SD59x18.unwrap(amountOut), 25e16);
     // With 1 IN -> 2 OUT
     amountIn = convert(1);
     amountOut = pair.computeAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 2e18);
+    assertEq(SD59x18.unwrap(amountOut), 50e16);
     // With 2 IN -> 4 OUT
     amountIn = convert(2);
     amountOut = pair.computeAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 4e18);
+    assertEq(SD59x18.unwrap(amountOut), 1e18);
 
     // 2 IN : 1 OUT
     exchangeRate = convert(2);
     // With .5 IN -> .25 OUT
     amountIn = SD59x18.wrap(50e16);
     amountOut = pair.computeAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 25e16);
+    assertEq(SD59x18.unwrap(amountOut), 1e18);
     // With 1 IN -> .5 OUT
     amountIn = convert(1);
     amountOut = pair.computeAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 50e16);
+    assertEq(SD59x18.unwrap(amountOut), 2e18);
     // With 2 IN -> 1 OUT
     amountIn = convert(2);
     amountOut = pair.computeAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 1e18);
+    assertEq(SD59x18.unwrap(amountOut), 4e18);
   }
 
-  function testComputeAmountIn_WithTime() public {
+  function testComputeAmountIn_WithTime_DefaultPair_PhaseTransition() public {
     SD59x18 amountIn;
     SD59x18 amountOut = convert(1);
 
-    // - 1 second
-    vm.warp(drawOffset - 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
-    // NOTE: Any time prior or equal to the drawOffset should return 0
-    assertEq(SD59x18.unwrap(amountIn), 0);
+    console2.log("phaseOneEndPercent ", convert(pair.phaseOneEndPercent()));
+    console2.log("phaseTwoEndPercent ", convert(pair.phaseTwoEndPercent()));
 
-    // Start
-    vm.warp(drawOffset);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
-
-    // + 1 second
-    vm.warp(drawOffset + 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
-
-    // Twenty percent
-    vm.warp(drawOffset + drawLength / 5);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
-
-    // Quarter
-    vm.warp(drawOffset + drawLength / 4);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
-
-    // Forty percent
-    vm.warp(drawOffset + (drawLength * 2) / 5);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
-
-    // Half
-    vm.warp(drawOffset + drawLength / 2);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 1e18);
-
-    // Sixty percent
-    vm.warp(drawOffset + (drawLength * 3) / 5);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 3e18);
-
-    // Three quarters
-    vm.warp(drawOffset + (drawLength / 4) * 3);
-    amountIn = pair.computeAmountIn(amountOut);
-    // NOTE: Slight inaccuracy due to rounding
-    assertEq(SD59x18.unwrap(amountIn), 6000000000000000024);
-
-    // Eighty percent
-    vm.warp(drawOffset + (drawLength * 4) / 5);
-    amountIn = pair.computeAmountIn(amountOut);
-    // NOTE: Slight inaccuracy due to rounding
-    assertEq(SD59x18.unwrap(amountIn), 7500000000000000018);
-
-    // - 1 second
-    vm.warp(drawOffset + drawLength - 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 129600000000000829440000);
-
-    // End
-    vm.warp(drawOffset + drawLength);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
-
-    // + 1 second
-    vm.warp(drawOffset + drawLength + 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
-  }
-
-  function testComputeAmountIn_WithTime_CustomPair() public {
-    SD59x18 amountIn;
-    SD59x18 amountOut = convert(1);
-
-    // Center on exchange rate of 50 IN : 1 OUT
-    SD59x18 targetExchangeRate = convert(50);
-    // Amount to increase exchange rate by per second
-    SD59x18 discoveryRate = convert(1);
-    // 30 mins -> 1 hour of tailored discovery
-    SD59x18 discoveryDeltaPercent = SD59x18.wrap(0.0208333333e18);
-
-    pair = new LiquidationPair(
-      ILiquidationSource(source),
-      tokenIn,
-      tokenOut,
-      targetExchangeRate,
-      discoveryRate,
-      discoveryDeltaPercent,
-      drawLength,
-      drawOffset
+    uint32 phaseOneEndOffset = uint32(
+      uint256(
+        convert(convert(int(uint(drawLength))).mul(pair.phaseOneEndPercent()).div(convert(100)))
+      )
+    );
+    uint32 phaseTwoEndOffset = uint32(
+      uint256(
+        convert(convert(int(uint(drawLength))).mul(pair.phaseTwoEndPercent()).div(convert(100)))
+      )
     );
 
-    console2.log("drawOffset + drawLength / 2 - 1 hours", (drawOffset + drawLength / 2 - 1 hours));
-    console2.log("drawLength", drawLength);
-    console2.log("Changeover", SD59x18.unwrap(pair.phaseOneEndPercent()));
+    console.log("phaseOneEndOffset ", phaseOneEndOffset);
+    console.log("phaseTwoEndOffset ", phaseTwoEndOffset);
+
+    // At Phase 1 End
+    // Should equal target exchange rate - 1/2 of phase 2 range
+    vm.warp(drawOffset + phaseOneEndOffset);
+    amountIn = pair.computeAmountIn(amountOut);
+    assertEq(SD59x18.unwrap(amountIn), 1052631578947368421);
+
+    // At Phase 2 End
+    // Should equal target exchange rate + 1/2 of phase 2 range
+    vm.warp(drawOffset + phaseTwoEndOffset);
+    amountIn = pair.computeAmountIn(amountOut);
+    assertEq(SD59x18.unwrap(amountIn), 952380952380952380);
+  }
+
+  // With the same amount out -> the amount in decreases over time
+  function testComputeAmountIn_WithTime_DefaultPair() public {
+    SD59x18 amountIn;
+    SD59x18 amountOut = convert(1);
+
+    console2.log("testComputeAmountIn_WithTime_DefaultPair");
+    console2.log("phaseOneEndPercent ", convert(pair.phaseOneEndPercent()));
+    console2.log("phaseTwoEndPercent ", convert(pair.phaseTwoEndPercent()));
 
     // - 1 second
     vm.warp(drawOffset - 1 seconds);
     amountIn = pair.computeAmountIn(amountOut);
-    // NOTE: Any time prior or equal to the drawOffset should return 0
-    assertEq(SD59x18.unwrap(amountIn), 0);
+    // NOTE: Any time prior or equal to the drawOffset should return uMAX_SD59x18
+    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Start
     vm.warp(drawOffset);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
+    // NOTE: Any time prior or equal to the drawOffset should return uMAX_SD59x18
+    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // + 1 second
     vm.warp(drawOffset + 1 seconds);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
+    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Twenty percent
     vm.warp(drawOffset + drawLength / 5);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 42812499999499999997);
+    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Quarter
     vm.warp(drawOffset + drawLength / 4);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 45208333332999999951);
+    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Forty percent
+    // NOTE: Slight inaccuracy due to rounding
     vm.warp(drawOffset + (drawLength * 2) / 5);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 48802083333249999999);
-
-    //////////////////////////////////////////////////////////
-
-    // Start of 1 hour 10% price exploration
-    vm.warp(drawOffset + drawLength / 2 - 1 hours);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 49564393939363636337);
+    assertEq(SD59x18.unwrap(amountIn), 1052631578947368421);
 
     // Half
     vm.warp(drawOffset + drawLength / 2);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 50000000000000000000);
-
-    // End of 1 hour 10% price exploration
-    vm.warp(drawOffset + drawLength / 2 + 1 hours);
-    amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 50435606060636363635);
-
-    //////////////////////////////////////////////////////////
+    assertEq(SD59x18.unwrap(amountIn), SD59x18.unwrap(defaultTargetExchangeRate));
 
     // Sixty percent
+    // NOTE: Slight inaccuracy due to rounding
     vm.warp(drawOffset + (drawLength * 3) / 5);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 51197916666750000001);
+    assertEq(SD59x18.unwrap(amountIn), 952380952380952380);
 
     // Three quarters
     vm.warp(drawOffset + (drawLength / 4) * 3);
     amountIn = pair.computeAmountIn(amountOut);
     // NOTE: Slight inaccuracy due to rounding
-    assertEq(SD59x18.unwrap(amountIn), 54791666667000000049);
+    assertEq(SD59x18.unwrap(amountIn), 246913580246913580);
 
     // Eighty percent
     vm.warp(drawOffset + (drawLength * 4) / 5);
     amountIn = pair.computeAmountIn(amountOut);
     // NOTE: Slight inaccuracy due to rounding
-    assertEq(SD59x18.unwrap(amountIn), 57187500000500000003);
+    assertEq(SD59x18.unwrap(amountIn), 165289256198347107);
 
     // - 1 second
     vm.warp(drawOffset + drawLength - 1 seconds);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 207045208347736060001002);
+    assertEq(SD59x18.unwrap(amountIn), 5787169324761);
 
     // End
     vm.warp(drawOffset + drawLength);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
+    assertEq(SD59x18.unwrap(amountIn), 0);
 
     // + 1 second
     vm.warp(drawOffset + drawLength + 1 seconds);
     amountIn = pair.computeAmountIn(amountOut);
-    assertEq(SD59x18.unwrap(amountIn), 0);
+    assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
+  }
+
+  function testComputeAmountOut_WithTime_DefaultPair_PhaseTransition() public {
+    SD59x18 amountIn = convert(1);
+    SD59x18 amountOut;
+
+    console2.log("phaseOneEndPercent ", convert(pair.phaseOneEndPercent()));
+    console2.log("phaseTwoEndPercent ", convert(pair.phaseTwoEndPercent()));
+
+    uint32 phaseOneEndOffset = uint32(
+      uint256(
+        convert(convert(int(uint(drawLength))).mul(pair.phaseOneEndPercent()).div(convert(100)))
+      )
+    );
+    uint32 phaseTwoEndOffset = uint32(
+      uint256(
+        convert(convert(int(uint(drawLength))).mul(pair.phaseTwoEndPercent()).div(convert(100)))
+      )
+    );
+
+    console.log("phaseOneEndOffset ", phaseOneEndOffset);
+    console.log("phaseTwoEndOffset ", phaseTwoEndOffset);
+
+    // At Phase 1 End
+    // Should equal target exchange rate - 1/2 of phase 2 range
+    // NOTE: Slight inaccuracy due to rounding
+    vm.warp(drawOffset + phaseOneEndOffset);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(
+      SD59x18.unwrap(amountOut),
+      SD59x18.unwrap(
+        defaultTargetExchangeRate.sub(
+          defaultTargetExchangeRate.mul(defaultPhaseTwoRangePercent.div(convert(2))).div(
+            convert(100)
+          )
+        )
+      )
+    );
+
+    // At Phase 2 End
+    // Should equal target exchange rate + 1/2 of phase 2 range
+    // NOTE: Slight inaccuracy due to rounding
+    vm.warp(drawOffset + phaseTwoEndOffset);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(
+      SD59x18.unwrap(amountOut),
+      SD59x18.unwrap(
+        defaultTargetExchangeRate.add(
+          defaultTargetExchangeRate.mul(defaultPhaseTwoRangePercent.div(convert(2))).div(
+            convert(100)
+          )
+        )
+      )
+    );
+  }
+
+  // With the same amount in -> the amount out increases over time
+  function testComputeAmountOut_WithTime_DefaultPair() public {
+    SD59x18 amountIn = convert(1);
+    SD59x18 amountOut;
+
+    console2.log("phaseOneEndPercent ", convert(pair.phaseOneEndPercent()));
+    console2.log("phaseTwoEndPercent ", convert(pair.phaseTwoEndPercent()));
+
+    // - 1 second
+    vm.warp(drawOffset - 1 seconds);
+    amountOut = pair.computeAmountOut(amountIn);
+    // NOTE: Any time prior or equal to the drawOffset should return 0
+    assertEq(SD59x18.unwrap(amountOut), 0);
+
+    // Start
+    vm.warp(drawOffset);
+    amountOut = pair.computeAmountOut(amountIn);
+    // NOTE: Any time prior or equal to the drawOffset should return 0
+    assertEq(SD59x18.unwrap(amountOut), 0);
+
+    // + 1 second
+    vm.warp(drawOffset + 1 seconds);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), 0);
+
+    // Twenty percent
+    vm.warp(drawOffset + drawLength / 5);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), 0);
+
+    // Quarter
+    vm.warp(drawOffset + drawLength / 4);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), 0);
+
+    // Forty percent
+    vm.warp(drawOffset + (drawLength * 2) / 5);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), 950000000000000000);
+
+    // Half
+    vm.warp(drawOffset + drawLength / 2);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), SD59x18.unwrap(defaultTargetExchangeRate));
+
+    // Sixty percent
+    vm.warp(drawOffset + (drawLength * 3) / 5);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), 1050000000000000000);
+
+    // Three quarters
+    vm.warp(drawOffset + (drawLength / 4) * 3);
+    amountOut = pair.computeAmountOut(amountIn);
+    // NOTE: Slight inaccuracy due to rounding
+    assertEq(SD59x18.unwrap(amountOut), 4050000000000000000);
+
+    // Eighty percent
+    vm.warp(drawOffset + (drawLength * 4) / 5);
+    amountOut = pair.computeAmountOut(amountIn);
+    // NOTE: Slight inaccuracy due to rounding
+    assertEq(SD59x18.unwrap(amountOut), 605e16);
+
+    // - 1 second
+    vm.warp(drawOffset + drawLength - 1 seconds);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), 172796050000001105920000);
+
+    // End
+    vm.warp(drawOffset + drawLength);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), uMAX_SD59x18);
+
+    // + 1 second
+    vm.warp(drawOffset + drawLength + 1 seconds);
+    amountOut = pair.computeAmountOut(amountIn);
+    assertEq(SD59x18.unwrap(amountOut), 0);
   }
 }

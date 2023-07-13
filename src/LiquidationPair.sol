@@ -5,8 +5,6 @@ import { ILiquidationSource } from "./interfaces/ILiquidationSource.sol";
 import { LiquidatorLib } from "./libraries/LiquidatorLib.sol";
 import { SD59x18, convert, MAX_SD59x18 } from "prb-math/SD59x18.sol";
 
-import { console2 } from "forge-std/console2.sol";
-
 /**
  * @title PoolTogether Liquidation Pair
  * @author PoolTogether Inc. Team
@@ -33,11 +31,14 @@ contract LiquidationPair {
   address public immutable tokenIn;
   address public immutable tokenOut;
   SD59x18 public targetExchangeRate; // tokenIn/tokenOut.
-  SD59x18 public discoveryDeltaPercent; // % of time to use discovery curve
-  // TODO: Adjust math st discoveryRate is a percentage to explore for the duration of phase 2. Make it a function of targetExchangeRate.
-  SD59x18 public discoveryRate; // Rate to increase the discovery curve exchange rate by each second
+  SD59x18 public nextTargetExchangeRate; // tokenIn/tokenOut.
+  uint32 public lastSwapPeriod; // The period of the last swap. Used for determining when to update the target exchange rate.
+  SD59x18 public phaseTwoDurationPercent; // % of time to traverse during phase 2.
+  SD59x18 public phaseTwoRangePercent; // % of target exchange rate to traverse during phase 2.
   SD59x18 public exchangeRateSmoothing = convert(5); // Smooths the curve when the exchange rate is in phase 1 or phase 3.
 
+  SD59x18 public immutable phaseTwoDurationPercentHalved;
+  SD59x18 public immutable phaseTwoRangePercentHalved;
   SD59x18 public immutable phaseOneEndPercent;
   SD59x18 public immutable phaseTwoEndPercent;
 
@@ -73,22 +74,35 @@ contract LiquidationPair {
     address _tokenIn,
     address _tokenOut,
     SD59x18 _initialTargetExchangeRate,
-    SD59x18 _discoveryDeltaPercent,
-    SD59x18 _discoveryRate,
+    SD59x18 _phaseTwoDurationPercent,
+    SD59x18 _phaseTwoRangePercent,
     uint32 _periodLength,
     uint32 _periodOffset
   ) {
+    // NOTE: Could probably allow 0 so there's no phase 2. Needs more testing.
+    require(_phaseTwoDurationPercent.gt(convert(0)), "LiquidationPair/invalid-phase-two-duration");
+    require(
+      _phaseTwoDurationPercent.lt(convert(100)),
+      "LiquidationPair/invalid-phase-two-duration"
+    );
+    require(_phaseTwoRangePercent.lt(convert(100)), "LiquidationPair/invalid-phase-two-range");
+    // NOTE: phaseTwoRangePercent of 0 means for the duration of phase 2, the exchange rate will be the target exchange rate.
+    require(_phaseTwoRangePercent.gte(convert(0)), "LiquidationPair/invalid-phase-two-range");
+
     source = _source;
     tokenIn = _tokenIn;
     tokenOut = _tokenOut;
     targetExchangeRate = _initialTargetExchangeRate;
-    discoveryDeltaPercent = _discoveryDeltaPercent;
-    discoveryRate = _discoveryRate;
+    nextTargetExchangeRate = _initialTargetExchangeRate;
+    phaseTwoDurationPercent = _phaseTwoDurationPercent;
+    phaseTwoRangePercent = _phaseTwoRangePercent;
     periodLength = _periodLength;
     periodOffset = _periodOffset;
 
-    phaseOneEndPercent = convert(50).sub(discoveryDeltaPercent);
-    phaseTwoEndPercent = convert(50).add(discoveryDeltaPercent);
+    phaseTwoDurationPercentHalved = phaseTwoDurationPercent.div(convert(2));
+    phaseTwoRangePercentHalved = phaseTwoRangePercent.div(convert(2));
+    phaseOneEndPercent = convert(50).sub(phaseTwoDurationPercentHalved);
+    phaseTwoEndPercent = convert(50).add(phaseTwoDurationPercentHalved);
   }
 
   /* ============ External Methods ============ */
@@ -136,35 +150,55 @@ contract LiquidationPair {
     return _getTimestampPeriod(timestamp);
   }
 
-  // /**
-  //  * @notice Computes the virtual reserves post virtual buyback of all available liquidity that has accrued.
-  //  * @return The virtual reserve of the token in.
-  //  * @return The virtual reserve of the token out.
-  //  */
-  // function nextLiquidationState() external view returns (uint128, uint128) {
-  //   return
-  //     LiquidatorLib._virtualBuyback(virtualReserveIn, virtualReserveOut, _availableReserveOut());
-  // }
-
-  // /**
-  //  * @notice Computes the exact amount of tokens to receive out for the given amount of tokens to send in.
-  //  * @param _amountIn The amount of tokens to send in.
-  //  * @return The amount of tokens to receive out.
-  //  */
-  // function computeExactAmountOut(uint256 _amountIn) external view returns (uint256) {
-  //   return
-  //     LiquidatorLib.computeExactAmountOut(
-  //       virtualReserveIn,
-  //       virtualReserveOut,
-  //       _availableReserveOut(),
-  //       _amountIn
-  //     );
-  // }
-
   /* ============ External Methods ============ */
 
   function getAuctionState() external view returns (SD59x18 percentCompleted, uint8 phase) {
     return _getAuctionState();
+  }
+
+  function swapExactAmountIn(
+    address _account,
+    SD59x18 _amountIn,
+    SD59x18 _amountOutMax
+  ) external returns (SD59x18) {
+    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
+    uint32 period = _getTimestampPeriod(uint32(block.timestamp));
+
+    (bool success, bytes memory returnData) = address(this).delegatecall(
+      abi.encodeWithSelector(
+        this.getExchangeRate.selector,
+        phase,
+        percentCompleted,
+        exchangeRateSmoothing,
+        phaseTwoDurationPercentHalved,
+        _getPhaseTwoRangeRate(),
+        _getTargetExchangeRate()
+      )
+    );
+
+    SD59x18 exchangeRate;
+    if (success) {
+      exchangeRate = abi.decode(returnData, (SD59x18));
+      // If exchange rate is negative, short circuit
+      if (exchangeRate.lte(convert(0))) {
+        return MAX_SD59x18;
+      }
+    } else if (percentCompleted.gte(convert(50))) {
+      // If we're greater than 50% completed, then it's an underflow
+      // Exchange rate at 50% is always >= 0, exchange rate is increasing
+      return convert(0);
+    } else {
+      return MAX_SD59x18;
+    }
+
+    SD59x18 amountOut = _computeAmountOut(_amountIn, exchangeRate);
+
+    require(amountOut.gte(_amountOutMax), "LiquidationPair/insufficient-amount-out");
+    _updateNextTargetExchangeRate(exchangeRate);
+    _updateLastSwapPeriod(period);
+    _swap(_account, amountOut, _amountIn);
+
+    return amountOut;
   }
 
   function swapExactAmountOut(
@@ -173,29 +207,7 @@ contract LiquidationPair {
     SD59x18 _amountInMax
   ) external returns (SD59x18) {
     (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
-
-    SD59x18 exchangeRate = LiquidatorLib.getExchangeRate(
-      phase,
-      percentCompleted,
-      exchangeRateSmoothing,
-      discoveryRate,
-      discoveryDeltaPercent,
-      targetExchangeRate
-    );
-    SD59x18 amountIn = _computeAmountIn(_amountOut, exchangeRate);
-
-    require(amountIn.lte(_amountInMax), "LiquidationPair/amount-in-exceeds-max");
-    _updateTargetExchangeRate(exchangeRate);
-    _swap(_account, _amountOut, amountIn);
-
-    return amountIn;
-  }
-
-  function computeAmountIn(SD59x18 _amountOut) external returns (SD59x18) {
-    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
-
-    console2.log("percentCompleted", convert(percentCompleted));
-    console2.log("phase", phase);
+    uint32 period = _getTimestampPeriod(uint32(block.timestamp));
 
     (bool success, bytes memory returnData) = address(this).delegatecall(
       abi.encodeWithSelector(
@@ -203,9 +215,9 @@ contract LiquidationPair {
         phase,
         percentCompleted,
         exchangeRateSmoothing,
-        discoveryRate,
-        discoveryDeltaPercent,
-        targetExchangeRate
+        phaseTwoDurationPercentHalved,
+        _getPhaseTwoRangeRate(),
+        _getTargetExchangeRate()
       )
     );
 
@@ -216,30 +228,101 @@ contract LiquidationPair {
       if (exchangeRate.lte(convert(0))) {
         return convert(0);
       }
-    } else if (phase == 1) {
+    } else if (percentCompleted.lte(convert(50))) {
+      // If we're less than 50% completed, then it's an underflow
+      // Exchange rate at 50% is always >= 0, exchange rate is increasing
       return convert(0);
-    } else if (phase == 3) {
-      // NOTE: This might be too big.
+    } else {
       return MAX_SD59x18;
     }
 
-    console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
-    // NOTE: There's a chance of overflow/underflow within phase 2.
-    // Need a smarter check for what value to return in that case.
+    SD59x18 amountIn = _computeAmountIn(_amountOut, exchangeRate);
+
+    require(amountIn.lte(_amountInMax), "LiquidationPair/amount-in-exceeds-max");
+    _updateNextTargetExchangeRate(exchangeRate);
+    _updateLastSwapPeriod(period);
+    _swap(_account, _amountOut, amountIn);
+
+    return amountIn;
+  }
+
+  function computeAmountIn(SD59x18 _amountOut) external returns (SD59x18) {
+    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
+
+    (bool success, bytes memory returnData) = address(this).delegatecall(
+      abi.encodeWithSelector(
+        this.getExchangeRate.selector,
+        phase,
+        percentCompleted,
+        exchangeRateSmoothing,
+        _getPhaseTwoRangeRate(),
+        phaseTwoDurationPercentHalved,
+        _getTargetExchangeRate()
+      )
+    );
+
+    SD59x18 exchangeRate;
+    if (success) {
+      exchangeRate = abi.decode(returnData, (SD59x18));
+      // If exchange rate is negative, short circuit
+      if (exchangeRate.lte(convert(0))) {
+        return MAX_SD59x18;
+      }
+    } else if (percentCompleted.gte(convert(50))) {
+      // If we're greater than 50% completed, then it's an underflow
+      // Exchange rate at 50% is always >= 0, exchange rate is increasing
+      return convert(0);
+    } else {
+      return MAX_SD59x18;
+    }
+
     return _computeAmountIn(_amountOut, exchangeRate);
+  }
+
+  function computeAmountOut(SD59x18 _amountIn) external returns (SD59x18) {
+    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
+
+    (bool success, bytes memory returnData) = address(this).delegatecall(
+      abi.encodeWithSelector(
+        this.getExchangeRate.selector,
+        phase,
+        percentCompleted,
+        exchangeRateSmoothing,
+        _getPhaseTwoRangeRate(),
+        phaseTwoDurationPercentHalved,
+        _getTargetExchangeRate()
+      )
+    );
+
+    SD59x18 exchangeRate;
+    if (success) {
+      exchangeRate = abi.decode(returnData, (SD59x18));
+      // If exchange rate is negative, force to 0
+      if (exchangeRate.lte(convert(0))) {
+        return convert(0);
+      }
+    } else if (percentCompleted.lte(convert(50))) {
+      // If we're less than 50% completed, then it's an underflow
+      // Exchange rate at 50% is always >= 0, exchange rate is increasing
+      return convert(0);
+    } else {
+      return MAX_SD59x18;
+    }
+
+    return _computeAmountOut(_amountIn, exchangeRate);
   }
 
   function computeAmountIn(
     SD59x18 _amountOut,
     SD59x18 exchangeRate
-  ) external view returns (SD59x18) {
+  ) external pure returns (SD59x18) {
     return _computeAmountIn(_amountOut, exchangeRate);
   }
 
   function computeAmountOut(
     SD59x18 _amountIn,
     SD59x18 exchangeRate
-  ) external view returns (SD59x18) {
+  ) external pure returns (SD59x18) {
     return _computeAmountOut(_amountIn, exchangeRate);
   }
 
@@ -247,8 +330,8 @@ contract LiquidationPair {
     uint8 _phase,
     SD59x18 _percentCompleted,
     SD59x18 _exchangeRateSmoothing,
-    SD59x18 _discoveryRate,
-    SD59x18 _discoveryDeltaPercent,
+    SD59x18 _phaseTwoRangeRate,
+    SD59x18 _phaseTwoDurationPercentHalved,
     SD59x18 _targetExchangeRate
   ) public view returns (SD59x18 exchangeRate) {
     return
@@ -256,31 +339,54 @@ contract LiquidationPair {
         _phase,
         _percentCompleted,
         _exchangeRateSmoothing,
-        _discoveryRate,
-        discoveryDeltaPercent,
+        _phaseTwoRangeRate,
+        _phaseTwoDurationPercentHalved,
         _targetExchangeRate
       );
   }
 
   /* ============ Internal Functions ============ */
 
-  function _updateTargetExchangeRate(SD59x18 _exchangeRate) internal {
-    // NOTE: Need to update a separate variable, otherwise the curves will change mid auction.
-    targetExchangeRate = targetExchangeRate.add(_exchangeRate).div(convert(2));
+  function _updateNextTargetExchangeRate(SD59x18 _exchangeRate) internal {
+    nextTargetExchangeRate = nextTargetExchangeRate.add(_exchangeRate).div(convert(2));
+  }
+
+  function _updateLastSwapPeriod(uint32 _period) internal {
+    if (_period > lastSwapPeriod) {
+      lastSwapPeriod = _period;
+    }
+  }
+
+  function _getTargetExchangeRate() internal returns (SD59x18) {
+    uint32 period = _getTimestampPeriod(uint32(block.timestamp));
+    if (period > lastSwapPeriod) {
+      targetExchangeRate = nextTargetExchangeRate;
+      return targetExchangeRate;
+    }
+    return targetExchangeRate;
+  }
+
+  // Calculate the slope of the curve for phase 2.
+  // Traversing from:
+  //    targetExchangeRate - (phaseTwoRangePercentHalved % * targetExchangeRate)
+  //    to
+  //    targetExchangeRate + (phaseTwoRangePercentHalved % * targetExchangeRate)
+  function _getPhaseTwoRangeRate() internal view returns (SD59x18) {
+    return targetExchangeRate.mul(phaseTwoRangePercentHalved).div(convert(1000));
   }
 
   function _computeAmountIn(
     SD59x18 _amountOut,
     SD59x18 exchangeRate
   ) internal pure returns (SD59x18) {
-    return _amountOut.mul(exchangeRate);
+    return _amountOut.div(exchangeRate);
   }
 
   function _computeAmountOut(
     SD59x18 _amountIn,
     SD59x18 exchangeRate
   ) internal pure returns (SD59x18) {
-    return _amountIn.div(exchangeRate);
+    return _amountIn.mul(exchangeRate);
   }
 
   /**
@@ -314,7 +420,8 @@ contract LiquidationPair {
       ? convert(int(uint(timeElapsed))).div(convert(int(uint(periodLength)))).mul(convert(100))
       : convert(0);
 
-    if (percentCompleted.lte(phaseOneEndPercent)) {
+    // NOTE: Prioritize phase 2 on overlap
+    if (percentCompleted.lt(phaseOneEndPercent)) {
       phase = 1;
     } else if (percentCompleted.lte(phaseTwoEndPercent)) {
       phase = 2;
