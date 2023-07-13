@@ -170,20 +170,20 @@ contract LiquidationPair {
   function swapExactAmountIn(
     address _account,
     SD59x18 _amountIn,
-    SD59x18 _amountOutMax
+    SD59x18 _amountOutMin
   ) external returns (SD59x18) {
-    return _swapExactAmountIn(_account, _amountIn, _amountOutMax);
+    return _swapExactAmountIn(_account, _amountIn, _amountOutMin);
   }
 
   function swapExactAmountOut(
     address _receiver,
     uint256 _amountOut,
-    uint256 _amountInMin
+    uint256 _amountInMax
   ) external returns (uint256) {
     return
       uint(
         convert(
-          _swapExactAmountOut(_receiver, convert(int(_amountOut)), convert(int(_amountInMin)))
+          _swapExactAmountOut(_receiver, convert(int(_amountOut)), convert(int(_amountInMax)))
         )
       );
   }
@@ -250,7 +250,7 @@ contract LiquidationPair {
   function _swapExactAmountIn(
     address _account,
     SD59x18 _amountIn,
-    SD59x18 _amountOutMax
+    SD59x18 _amountOutMin
   ) internal returns (SD59x18) {
     (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
     uint32 period = _getTimestampPeriod(uint32(block.timestamp));
@@ -284,7 +284,7 @@ contract LiquidationPair {
 
     SD59x18 amountOut = _computeExactAmountOut(_amountIn, exchangeRate);
 
-    require(amountOut.gte(_amountOutMax), "LiquidationPair/insufficient-amount-out");
+    require(amountOut.gte(_amountOutMin), "LiquidationPair/insufficient-amount-out");
     _updateNextTargetExchangeRate(exchangeRate);
     _updateLastSwapPeriod(period);
     _swap(_account, amountOut, _amountIn);
