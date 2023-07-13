@@ -11,6 +11,6 @@
 [submodule "lib/prb-math"]
 	path = lib/prb-math
 	url = https://github.com/PaulRBerg/prb-math
-[submodule "lib/pt-v5-ILiquidator"]
-	path = lib/pt-v5-ILiquidator
-	url = https://github.com/GenerationSoftware/pt-v5-ILiquidator
+[submodule "lib/pt-v5-liquidator-interfaces"]
+	path = lib/pt-v5-liquidator-interfaces
+	url = https://github.com/GenerationSoftware/pt-v5-liquidator-interfaces
