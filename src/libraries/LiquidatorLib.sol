@@ -8,10 +8,6 @@ import "openzeppelin/token/ERC20/IERC20.sol";
 import { SD59x18, convert, wrap } from "prb-math/SD59x18.sol";
 
 library LiquidatorLib {
-  function computeAmount(SD59x18 _amountOut, SD59x18 exchangeRate) internal pure returns (SD59x18) {
-    return _amountOut.mul(exchangeRate);
-  }
-
   function getExchangeRate(
     uint8 phase,
     SD59x18 percentCompleted,

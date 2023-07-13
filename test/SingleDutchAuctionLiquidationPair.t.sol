@@ -252,7 +252,7 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
   }
 
   // Exchange rate is IN per OUT
-  function testComputeAmountIn_WithExchangeRate() public {
+  function testcomputeExactAmountIn_WithExchangeRate() public {
     SD59x18 amountIn;
     SD59x18 amountOut;
     SD59x18 exchangeRate;
@@ -261,50 +261,50 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     exchangeRate = convert(1);
     // With .5 OUT -> .5 IN
     amountOut = SD59x18.wrap(50e16);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 50e16);
     // With 1 OUT -> 1 IN
     amountOut = convert(1);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 1e18);
     // With 2 OUT -> 2 IN
     amountOut = convert(2);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 2e18);
 
     // 1 IN : 2 OUT
     exchangeRate = SD59x18.wrap(50e16);
     // With .5 OUT -> .25 IN
     amountOut = SD59x18.wrap(50e16);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 1e18);
     // With 1 OUT -> .5 IN
     amountOut = convert(1);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 2e18);
     // With 2 OUT -> 1 IN
     amountOut = convert(2);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 4e18);
 
     // 2 IN : 1 OUT
     exchangeRate = convert(2);
     // With .5 OUT -> 1 IN
     amountOut = SD59x18.wrap(50e16);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 25e16);
     // With 1 OUT -> 2 IN
     amountOut = convert(1);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 50e16);
     // With 2 OUT -> 4 IN
     amountOut = convert(2);
-    amountIn = pair.computeAmountIn(amountOut, exchangeRate);
+    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
     assertEq(SD59x18.unwrap(amountIn), 1e18);
   }
 
   // Exchange rate is IN per OUT
-  function testComputeAmountOut_WithExchangeRate() public {
+  function testcomputeExactAmountOut_WithExchangeRate() public {
     SD59x18 amountIn;
     SD59x18 amountOut;
     SD59x18 exchangeRate;
@@ -313,49 +313,49 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     exchangeRate = convert(1);
     // With .5 IN -> .5 OUT
     amountIn = SD59x18.wrap(50e16);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 50e16);
     // With 1 IN -> 1 OUT
     amountIn = convert(1);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 1e18);
     // With 2 IN -> 2 OUT
     amountIn = convert(2);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 2e18);
 
     // 1 IN : 2 OUT
     exchangeRate = SD59x18.wrap(50e16);
     // With .5 IN -> 1 OUT
     amountIn = SD59x18.wrap(50e16);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 25e16);
     // With 1 IN -> 2 OUT
     amountIn = convert(1);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 50e16);
     // With 2 IN -> 4 OUT
     amountIn = convert(2);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 1e18);
 
     // 2 IN : 1 OUT
     exchangeRate = convert(2);
     // With .5 IN -> .25 OUT
     amountIn = SD59x18.wrap(50e16);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 1e18);
     // With 1 IN -> .5 OUT
     amountIn = convert(1);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 2e18);
     // With 2 IN -> 1 OUT
     amountIn = convert(2);
-    amountOut = pair.computeAmountOut(amountIn, exchangeRate);
+    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
     assertEq(SD59x18.unwrap(amountOut), 4e18);
   }
 
-  function testComputeAmountIn_WithTime_DefaultPair_PhaseTransition() public {
+  function testcomputeExactAmountIn_WithTime_DefaultPair_PhaseTransition() public {
     SD59x18 amountIn;
     SD59x18 amountOut = convert(1);
 
@@ -379,98 +379,98 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     // At Phase 1 End
     // Should equal target exchange rate - 1/2 of phase 2 range
     vm.warp(drawOffset + phaseOneEndOffset);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), 1052631578947368421);
 
     // At Phase 2 End
     // Should equal target exchange rate + 1/2 of phase 2 range
     vm.warp(drawOffset + phaseTwoEndOffset);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), 952380952380952380);
   }
 
   // With the same amount out -> the amount in decreases over time
-  function testComputeAmountIn_WithTime_DefaultPair() public {
+  function testcomputeExactAmountIn_WithTime_DefaultPair() public {
     SD59x18 amountIn;
     SD59x18 amountOut = convert(1);
 
-    console2.log("testComputeAmountIn_WithTime_DefaultPair");
+    console2.log("testcomputeExactAmountIn_WithTime_DefaultPair");
     console2.log("phaseOneEndPercent ", convert(pair.phaseOneEndPercent()));
     console2.log("phaseTwoEndPercent ", convert(pair.phaseTwoEndPercent()));
 
     // - 1 second
     vm.warp(drawOffset - 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     // NOTE: Any time prior or equal to the drawOffset should return uMAX_SD59x18
     assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Start
     vm.warp(drawOffset);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     // NOTE: Any time prior or equal to the drawOffset should return uMAX_SD59x18
     assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // + 1 second
     vm.warp(drawOffset + 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Twenty percent
     vm.warp(drawOffset + drawLength / 5);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Quarter
     vm.warp(drawOffset + drawLength / 4);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
 
     // Forty percent
     // NOTE: Slight inaccuracy due to rounding
     vm.warp(drawOffset + (drawLength * 2) / 5);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), 1052631578947368421);
 
     // Half
     vm.warp(drawOffset + drawLength / 2);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), SD59x18.unwrap(defaultTargetExchangeRate));
 
     // Sixty percent
     // NOTE: Slight inaccuracy due to rounding
     vm.warp(drawOffset + (drawLength * 3) / 5);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), 952380952380952380);
 
     // Three quarters
     vm.warp(drawOffset + (drawLength / 4) * 3);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     // NOTE: Slight inaccuracy due to rounding
     assertEq(SD59x18.unwrap(amountIn), 246913580246913580);
 
     // Eighty percent
     vm.warp(drawOffset + (drawLength * 4) / 5);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     // NOTE: Slight inaccuracy due to rounding
     assertEq(SD59x18.unwrap(amountIn), 165289256198347107);
 
     // - 1 second
     vm.warp(drawOffset + drawLength - 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), 5787169324761);
 
     // End
     vm.warp(drawOffset + drawLength);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), 0);
 
     // + 1 second
     vm.warp(drawOffset + drawLength + 1 seconds);
-    amountIn = pair.computeAmountIn(amountOut);
+    amountIn = pair.computeExactAmountIn(amountOut);
     assertEq(SD59x18.unwrap(amountIn), uMAX_SD59x18);
   }
 
-  function testComputeAmountOut_WithTime_DefaultPair_PhaseTransition() public {
+  function testcomputeExactAmountOut_WithTime_DefaultPair_PhaseTransition() public {
     SD59x18 amountIn = convert(1);
     SD59x18 amountOut;
 
@@ -495,7 +495,7 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     // Should equal target exchange rate - 1/2 of phase 2 range
     // NOTE: Slight inaccuracy due to rounding
     vm.warp(drawOffset + phaseOneEndOffset);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(
       SD59x18.unwrap(amountOut),
       SD59x18.unwrap(
@@ -511,7 +511,7 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     // Should equal target exchange rate + 1/2 of phase 2 range
     // NOTE: Slight inaccuracy due to rounding
     vm.warp(drawOffset + phaseTwoEndOffset);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(
       SD59x18.unwrap(amountOut),
       SD59x18.unwrap(
@@ -525,7 +525,7 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
   }
 
   // With the same amount in -> the amount out increases over time
-  function testComputeAmountOut_WithTime_DefaultPair() public {
+  function testcomputeExactAmountOut_WithTime_DefaultPair() public {
     SD59x18 amountIn = convert(1);
     SD59x18 amountOut;
 
@@ -534,71 +534,71 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
 
     // - 1 second
     vm.warp(drawOffset - 1 seconds);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     // NOTE: Any time prior or equal to the drawOffset should return 0
     assertEq(SD59x18.unwrap(amountOut), 0);
 
     // Start
     vm.warp(drawOffset);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     // NOTE: Any time prior or equal to the drawOffset should return 0
     assertEq(SD59x18.unwrap(amountOut), 0);
 
     // + 1 second
     vm.warp(drawOffset + 1 seconds);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 0);
 
     // Twenty percent
     vm.warp(drawOffset + drawLength / 5);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 0);
 
     // Quarter
     vm.warp(drawOffset + drawLength / 4);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 0);
 
     // Forty percent
     vm.warp(drawOffset + (drawLength * 2) / 5);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 950000000000000000);
 
     // Half
     vm.warp(drawOffset + drawLength / 2);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), SD59x18.unwrap(defaultTargetExchangeRate));
 
     // Sixty percent
     vm.warp(drawOffset + (drawLength * 3) / 5);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 1050000000000000000);
 
     // Three quarters
     vm.warp(drawOffset + (drawLength / 4) * 3);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     // NOTE: Slight inaccuracy due to rounding
     assertEq(SD59x18.unwrap(amountOut), 4050000000000000000);
 
     // Eighty percent
     vm.warp(drawOffset + (drawLength * 4) / 5);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     // NOTE: Slight inaccuracy due to rounding
     assertEq(SD59x18.unwrap(amountOut), 605e16);
 
     // - 1 second
     vm.warp(drawOffset + drawLength - 1 seconds);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 172796050000001105920000);
 
     // End
     vm.warp(drawOffset + drawLength);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), uMAX_SD59x18);
 
     // + 1 second
     vm.warp(drawOffset + drawLength + 1 seconds);
-    amountOut = pair.computeAmountOut(amountIn);
+    amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 0);
   }
 }
