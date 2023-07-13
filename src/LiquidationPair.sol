@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.17;
 
-import { ILiquidationSource } from "./interfaces/ILiquidationSource.sol";
+import { ILiquidationSource } from "v5-liquidator-interfaces/ILiquidationSource.sol";
+import { ILiquidationPair } from "v5-liquidator-interfaces/ILiquidationPair.sol";
+
 import { LiquidatorLib } from "./libraries/LiquidatorLib.sol";
 import { SD59x18, convert, MAX_SD59x18 } from "prb-math/SD59x18.sol";
 
@@ -24,7 +26,7 @@ import { SD59x18, convert, MAX_SD59x18 } from "prb-math/SD59x18.sol";
  *          are large enough such that the next swap will have a realistic impact on the virtual
  *          reserves.
  */
-contract LiquidationPair {
+contract LiquidationPair is ILiquidationPair {
   /* ============ Variables ============ */
 
   ILiquidationSource public immutable source;
@@ -108,24 +110,15 @@ contract LiquidationPair {
   /* ============ External Methods ============ */
   /* ============ Read Methods ============ */
 
-  /**
-   * @notice Get the address that will receive `tokenIn`.
-   * @return Address of the target
-   */
+  /// @inheritdoc ILiquidationPair
   function target() external view returns (address) {
     return source.targetOf(tokenIn);
   }
 
-  /**
-   * @notice Computes the maximum amount of tokens that can be swapped in given the current state of the liquidation pair.
-   * @return The maximum amount of tokens that can be swapped in.
-   */
+  /// @inheritdoc ILiquidationPair
   function maxAmountIn() external view returns (uint256) {}
 
-  /**
-   * @notice Gets the maximum amount of tokens that can be swapped out from the source.
-   * @return The maximum amount of tokens that can be swapped out.
-   */
+  /// @inheritdoc ILiquidationPair
   function maxAmountOut() external view returns (uint256) {
     return _availableReserveOut();
   }
@@ -156,6 +149,7 @@ contract LiquidationPair {
     return _getAuctionState();
   }
 
+  /// @inheritdoc ILiquidationPair
   function swapExactAmountIn(
     address _receiver,
     uint256 _amountIn,
@@ -175,6 +169,7 @@ contract LiquidationPair {
     return _swapExactAmountIn(_account, _amountIn, _amountOutMin);
   }
 
+  /// @inheritdoc ILiquidationPair
   function swapExactAmountOut(
     address _receiver,
     uint256 _amountOut,
@@ -196,6 +191,7 @@ contract LiquidationPair {
     return _swapExactAmountOut(_account, _amountOut, _amountInMax);
   }
 
+  /// @inheritdoc ILiquidationPair
   function computeExactAmountIn(uint256 _amountOut) external returns (uint256) {
     return uint256(convert(_computeExactAmountIn(convert(int256(_amountOut)))));
   }
@@ -204,6 +200,7 @@ contract LiquidationPair {
     return _computeExactAmountIn(_amountOut);
   }
 
+  /// @inheritdoc ILiquidationPair
   function computeExactAmountOut(uint256 _amountIn) external returns (uint256) {
     return uint256(convert(_computeExactAmountOut(convert(int256(_amountIn)))));
   }

@@ -3,10 +3,11 @@ pragma solidity 0.8.17;
 
 import "forge-std/Test.sol";
 
-import { BaseSetup } from "./utils/BaseSetup.sol";
-import { ILiquidationSource } from "../src/interfaces/ILiquidationSource.sol";
-import { LiquidationPair } from "../src/LiquidationPair.sol";
+import { ILiquidationSource } from "v5-liquidator-interfaces/ILiquidationSource.sol";
 import { SD59x18, convert, uMAX_SD59x18 } from "prb-math/SD59x18.sol";
+
+import { BaseSetup } from "./utils/BaseSetup.sol";
+import { LiquidationPair } from "../src/LiquidationPair.sol";
 import { Utils } from "./utils/Utils.sol";
 import { LiquidatorLib } from "../src/libraries/LiquidatorLib.sol";
 

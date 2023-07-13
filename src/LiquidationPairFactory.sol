@@ -2,7 +2,10 @@
 
 pragma solidity 0.8.17;
 
-import "./LiquidationPair.sol";
+import { ILiquidationSource } from "v5-liquidator-interfaces/ILiquidationSource.sol";
+
+import { LiquidationPair } from "./LiquidationPair.sol";
+import { SD59x18 } from "prb-math/SD59x18.sol";
 
 /**
  * @title PoolTogether Liquidation Pair Factory

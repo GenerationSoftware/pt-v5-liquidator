@@ -4,5 +4,7 @@ forge-std/=lib/forge-std/src/
 openzeppelin/=lib/openzeppelin-contracts/contracts
 prb-math/=lib/prb-math/src/
 
+v5-liquidator-interfaces/=lib/pt-v5-ILiquidator/src/interfaces
+
 test/=test/
 src/=src/
