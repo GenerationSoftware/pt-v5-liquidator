@@ -193,20 +193,24 @@ contract LiquidationPair is ILiquidationPair {
 
   /// @inheritdoc ILiquidationPair
   function computeExactAmountIn(uint256 _amountOut) external returns (uint256) {
-    return uint256(convert(_computeExactAmountIn(convert(int256(_amountOut)))));
+    (SD59x18 amountIn, ) = _computeExactAmountIn(convert(int256(_amountOut)));
+    return uint256(convert(amountIn));
   }
 
   function computeExactAmountIn(SD59x18 _amountOut) external returns (SD59x18) {
-    return _computeExactAmountIn(_amountOut);
+    (SD59x18 amountIn, ) = _computeExactAmountIn(_amountOut);
+    return amountIn;
   }
 
   /// @inheritdoc ILiquidationPair
   function computeExactAmountOut(uint256 _amountIn) external returns (uint256) {
-    return uint256(convert(_computeExactAmountOut(convert(int256(_amountIn)))));
+    (SD59x18 amountOut, ) = _computeExactAmountOut(convert(int256(_amountIn)));
+    return uint256(convert(amountOut));
   }
 
   function computeExactAmountOut(SD59x18 _amountIn) external returns (SD59x18) {
-    return _computeExactAmountOut(_amountIn);
+    (SD59x18 amountOut, ) = _computeExactAmountOut(_amountIn);
+    return amountOut;
   }
 
   function computeExactAmountIn(
@@ -249,40 +253,14 @@ contract LiquidationPair is ILiquidationPair {
     SD59x18 _amountIn,
     SD59x18 _amountOutMin
   ) internal returns (SD59x18) {
-    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
     uint32 period = _getTimestampPeriod(uint32(block.timestamp));
 
-    (bool success, bytes memory returnData) = address(this).delegatecall(
-      abi.encodeWithSelector(
-        this.getExchangeRate.selector,
-        phase,
-        percentCompleted,
-        exchangeRateSmoothing,
-        _getPhaseTwoRangeRate(),
-        phaseTwoDurationPercentHalved,
-        _getTargetExchangeRate()
-      )
-    );
-
-    SD59x18 exchangeRate;
-    if (success) {
-      exchangeRate = abi.decode(returnData, (SD59x18));
-      // If exchange rate is negative, short circuit
-      if (exchangeRate.lte(convert(0))) {
-        return MAX_SD59x18;
-      }
-    } else if (percentCompleted.gte(convert(50))) {
-      // If we're greater than 50% completed, then it's an underflow
-      // Exchange rate at 50% is always >= 0, exchange rate is increasing
-      return convert(0);
-    } else {
-      return MAX_SD59x18;
-    }
-
-    SD59x18 amountOut = _computeExactAmountOut(_amountIn, exchangeRate);
+    (SD59x18 amountOut, SD59x18 exchangeRate) = _computeExactAmountOut(_amountIn);
 
     require(amountOut.gte(_amountOutMin), "LiquidationPair/insufficient-amount-out");
-    _updateNextTargetExchangeRate(exchangeRate);
+    if (exchangeRate.gt(convert(0))) {
+      _updateNextTargetExchangeRate(exchangeRate);
+    }
     _updateLastSwapPeriod(period);
     _swap(_account, amountOut, _amountIn);
 
@@ -294,40 +272,14 @@ contract LiquidationPair is ILiquidationPair {
     SD59x18 _amountOut,
     SD59x18 _amountInMax
   ) internal returns (SD59x18) {
-    (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
     uint32 period = _getTimestampPeriod(uint32(block.timestamp));
 
-    (bool success, bytes memory returnData) = address(this).delegatecall(
-      abi.encodeWithSelector(
-        this.getExchangeRate.selector,
-        phase,
-        percentCompleted,
-        exchangeRateSmoothing,
-        _getPhaseTwoRangeRate(),
-        phaseTwoDurationPercentHalved,
-        _getTargetExchangeRate()
-      )
-    );
-
-    SD59x18 exchangeRate;
-    if (success) {
-      exchangeRate = abi.decode(returnData, (SD59x18));
-      // If exchange rate is negative, force to 0
-      if (exchangeRate.lte(convert(0))) {
-        return convert(0);
-      }
-    } else if (percentCompleted.lte(convert(50))) {
-      // If we're less than 50% completed, then it's an underflow
-      // Exchange rate at 50% is always >= 0, exchange rate is increasing
-      return convert(0);
-    } else {
-      return MAX_SD59x18;
-    }
-
-    SD59x18 amountIn = _computeExactAmountIn(_amountOut, exchangeRate);
+    (SD59x18 amountIn, SD59x18 exchangeRate) = _computeExactAmountIn(_amountOut);
 
     require(amountIn.lte(_amountInMax), "LiquidationPair/amount-in-exceeds-max");
-    _updateNextTargetExchangeRate(exchangeRate);
+    if (exchangeRate.gt(convert(0))) {
+      _updateNextTargetExchangeRate(exchangeRate);
+    }
     _updateLastSwapPeriod(period);
     _swap(_account, _amountOut, amountIn);
 
@@ -362,7 +314,8 @@ contract LiquidationPair is ILiquidationPair {
     return targetExchangeRate.mul(phaseTwoRangePercentHalved).div(convert(1000));
   }
 
-  function _computeExactAmountIn(SD59x18 _amountOut) internal returns (SD59x18) {
+  // NOTE: If we shortcircuit do to an over/underflow, we return exchange rate of 0. No update action is taken.
+  function _computeExactAmountIn(SD59x18 _amountOut) internal returns (SD59x18, SD59x18) {
     (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
 
     (bool success, bytes memory returnData) = address(this).delegatecall(
@@ -382,17 +335,17 @@ contract LiquidationPair is ILiquidationPair {
       exchangeRate = abi.decode(returnData, (SD59x18));
       // If exchange rate is negative, short circuit
       if (exchangeRate.lte(convert(0))) {
-        return MAX_SD59x18;
+        return (MAX_SD59x18, convert(0));
       }
     } else if (percentCompleted.gte(convert(50))) {
       // If we're greater than 50% completed, then it's an underflow
       // Exchange rate at 50% is always >= 0, exchange rate is increasing
-      return convert(0);
+      return (convert(0), convert(0));
     } else {
-      return MAX_SD59x18;
+      return (MAX_SD59x18, convert(0));
     }
 
-    return _computeExactAmountIn(_amountOut, exchangeRate);
+    return (_computeExactAmountIn(_amountOut, exchangeRate), exchangeRate);
   }
 
   function _computeExactAmountIn(
@@ -402,7 +355,8 @@ contract LiquidationPair is ILiquidationPair {
     return _amountOut.div(exchangeRate);
   }
 
-  function _computeExactAmountOut(SD59x18 _amountIn) internal returns (SD59x18) {
+  // NOTE: If we shortcircuit do to an over/underflow, we return exchange rate of 0. No update action is taken.
+  function _computeExactAmountOut(SD59x18 _amountIn) internal returns (SD59x18, SD59x18) {
     (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
 
     (bool success, bytes memory returnData) = address(this).delegatecall(
@@ -422,17 +376,17 @@ contract LiquidationPair is ILiquidationPair {
       exchangeRate = abi.decode(returnData, (SD59x18));
       // If exchange rate is negative, force to 0
       if (exchangeRate.lte(convert(0))) {
-        return convert(0);
+        return (convert(0), convert(0));
       }
     } else if (percentCompleted.lte(convert(50))) {
       // If we're less than 50% completed, then it's an underflow
       // Exchange rate at 50% is always >= 0, exchange rate is increasing
-      return convert(0);
+      return (convert(0), convert(0));
     } else {
-      return MAX_SD59x18;
+      return (MAX_SD59x18, convert(0));
     }
 
-    return _computeExactAmountOut(_amountIn, exchangeRate);
+    return (_computeExactAmountOut(_amountIn, exchangeRate), exchangeRate);
   }
 
   function _computeExactAmountOut(
