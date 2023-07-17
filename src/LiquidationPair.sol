@@ -59,6 +59,10 @@ contract LiquidationPair is ILiquidationPair {
 
   /* ============ Modifiers ============ */
 
+  /**
+   * @notice Updates the period state if the period has changed.
+   * @dev This modifier is used to update the period state before a function that relies on the state is executed.
+   */
   modifier updatePeriodState() {
     uint32 currentPeriod_ = _getTimestampPeriod(uint32(block.timestamp));
 
@@ -127,28 +131,55 @@ contract LiquidationPair is ILiquidationPair {
     return uint(convert(maxAmountOutThisPeriod));
   }
 
+  /**
+   * @notice Gets the time elapsed since the start of the current period.
+   * @return The time elapsed since the start of the current period.
+   */
   function getTimeElapsed() external view returns (uint32) {
     return _getTimeElapsed();
   }
 
+  /**
+   * @notice Gets the starting timestamp of the current period.
+   * @return The starting timestamp of the current period.
+   */
   function getPeriodStartTimestamp() external view returns (uint32) {
     return _getPeriodStartTimestamp(uint32(block.timestamp));
   }
 
+  /**
+   * @notice Gets the starting timestamp of the period that the timestamp falls in.
+   * @param timestamp The timestamp to get the period start for.
+   * @return The starting timestamp of the period that the timestamp falls in.
+   */
   function getPeriodStartTimestamp(uint32 timestamp) external view returns (uint32) {
     return _getPeriodStartTimestamp(timestamp);
   }
 
+  /**
+   * @notice Gets the period that the current timestamp falls in.
+   * @return The period that the current timestamp falls in.
+   */
   function getTimestampPeriod() external view returns (uint32) {
     return _getTimestampPeriod(uint32(block.timestamp));
   }
 
+  /**
+   * @notice Gets the period that the timestamp falls in.
+   * @param timestamp The timestamp to get the period for.
+   * @return The period that the timestamp falls in.
+   */
   function getTimestampPeriod(uint32 timestamp) external view returns (uint32) {
     return _getTimestampPeriod(timestamp);
   }
 
   /* ============ External Methods ============ */
 
+  /**
+   * @notice Gets the current state of the auction.
+   * @return percentCompleted The percent completed of the auction.
+   * @return phase The current phase of the auction.
+   */
   function getAuctionState() external view returns (SD59x18 percentCompleted, uint8 phase) {
     return _getAuctionState();
   }
@@ -217,6 +248,16 @@ contract LiquidationPair is ILiquidationPair {
     return amountOut;
   }
 
+  /**
+   * @notice Gets the exchange rate for the current time.
+   * @param _phase The current phase of the auction.
+   * @param _percentCompleted The percent completed of the current period.
+   * @param _exchangeRateSmoothing The smoothing factor for the exchange rate.
+   * @param _phaseTwoRangeRate The slope of the line during phase 2.
+   * @param _phaseTwoDurationPercentHalved The duration of phase 2 divided by 2.
+   * @param _targetExchangeRate The target exchange rate.
+   * @return exchangeRate The exchange rate for the current time.
+   */
   function getExchangeRate(
     uint8 _phase,
     SD59x18 _percentCompleted,
@@ -238,6 +279,13 @@ contract LiquidationPair is ILiquidationPair {
 
   /* ============ Internal Functions ============ */
 
+  /**
+   * @notice Updates the state of the auction.
+   * @param _account The account to send the tokens to.
+   * @param _amountIn The amount of tokens being sent in.
+   * @param _amountOutMin The minimum amount of tokens being sent out.
+   * @return The amount of tokens being sent out.
+   */
   function _swapExactAmountIn(
     address _account,
     SD59x18 _amountIn,
@@ -252,6 +300,13 @@ contract LiquidationPair is ILiquidationPair {
     return amountOut;
   }
 
+  /**
+   * @notice Swaps an exact amount of tokens out for an amount of tokens in.
+   * @param _account The account to send the tokens to.
+   * @param _amountOut The amount of tokens being sent out.
+   * @param _amountInMax The maximum amount of tokens sent in.
+   * @return The amount of tokens sent in.
+   */
   function _swapExactAmountOut(
     address _account,
     SD59x18 _amountOut,
@@ -266,6 +321,12 @@ contract LiquidationPair is ILiquidationPair {
     return amountIn;
   }
 
+  /**
+   * @notice Updates the state of the current auction.
+   * @param _amountOut The amount of tokens being sent out.
+   * @param _exchangeRate The exchange rate for the current swap.
+   * @dev The state is updated after a successful swap and preps the state for the next period.
+   */
   function _updateState(SD59x18 _amountOut, SD59x18 _exchangeRate) internal {
     if (_exchangeRate.gt(convert(0))) {
       nextTargetExchangeRate = nextTargetExchangeRate.add(_exchangeRate).div(convert(2));
@@ -273,16 +334,22 @@ contract LiquidationPair is ILiquidationPair {
     maxAmountOutThisPeriod = maxAmountOutThisPeriod.sub(_amountOut);
   }
 
-  // Calculate the slope of the curve for phase 2.
-  // Traversing from:
-  //    targetExchangeRate - (phaseTwoRangePercentHalved % * targetExchangeRate)
-  //    to
-  //    targetExchangeRate + (phaseTwoRangePercentHalved % * targetExchangeRate)
+  /**
+   * @notice Calculate the slope of the line for phase 2.
+   * @dev Traversing from: targetExchangeRate - (phaseTwoRangePercentHalved % * targetExchangeRate) to targetExchangeRate + (phaseTwoRangePercentHalved % * targetExchangeRate)
+   * @return The slope of the line for phase 2.
+   */
   function _getPhaseTwoRangeRate() internal view returns (SD59x18) {
     return targetExchangeRate.mul(phaseTwoRangePercentHalved).div(convert(1000));
   }
 
-  // NOTE: If we shortcircuit do to an over/underflow, we return exchange rate of 0. No update action is taken.
+  /**
+   * @notice Computes the amount of tokens to send for a given amount of tokens to receive.
+   * @dev If we shortcircuit due to an over/underflow, we return exchange rate of 0. No update to stored target exchagne rate is taken in this case.
+   * @param _amountOut The amount of tokens to receive.
+   * @return The amount of tokens to receive.
+   * @return The exchange rate for these tokens.
+   */
   function _computeExactAmountIn(SD59x18 _amountOut) internal returns (SD59x18, SD59x18) {
     (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
 
@@ -316,7 +383,13 @@ contract LiquidationPair is ILiquidationPair {
     return (_amountOut.div(exchangeRate), exchangeRate);
   }
 
-  // NOTE: If we shortcircuit do to an over/underflow, we return exchange rate of 0. No update action is taken.
+  /**
+   * @notice Computes the amount of tokens to receive for a given amount of tokens to send.
+   * @dev If we shortcircuit due to an over/underflow, we return exchange rate of 0. No update to stored target exchagne rate is taken in this case.
+   * @param _amountIn The amount of tokens to send.
+   * @return The amount of tokens to receive.
+   * @return The exchange rate for these tokens.
+   */
   function _computeExactAmountOut(SD59x18 _amountIn) internal returns (SD59x18, SD59x18) {
     (SD59x18 percentCompleted, uint8 phase) = _getAuctionState();
 
@@ -374,6 +447,12 @@ contract LiquidationPair is ILiquidationPair {
     );
   }
 
+  /**
+   * @notice Gets the current state of the auction.
+   * @return percentCompleted The percent of the current period that has elapsed.
+   * @return phase The current phase that the auction is in.
+   * @dev The phase dictates the exchange rate curve.
+   */
   function _getAuctionState() internal view returns (SD59x18 percentCompleted, uint8 phase) {
     uint32 timeElapsed = _getTimeElapsed();
 
@@ -391,6 +470,10 @@ contract LiquidationPair is ILiquidationPair {
     }
   }
 
+  /**
+   * @notice Gets the time elapsed since the start of the current period.
+   * @return The time elapsed since the start of the current period.
+   */
   function _getTimeElapsed() internal view returns (uint32) {
     return
       uint32(block.timestamp) > periodOffset
@@ -398,11 +481,21 @@ contract LiquidationPair is ILiquidationPair {
         : 0;
   }
 
+  /**
+   * @notice Gets the timestamp for the start of the period that the given timestamp falls in.
+   * @param _timestamp The timestamp to get the current period start for.
+   * @return timestamp The timestamp for the start of the period that the given timestamp falls in.
+   */
   function _getPeriodStartTimestamp(uint32 _timestamp) private view returns (uint32 timestamp) {
     uint32 period = _getTimestampPeriod(_timestamp);
     return period > 0 ? periodOffset + ((period - 1) * periodLength) : 0;
   }
 
+  /**
+   * @notice Gets the period that the given timestamp falls in.
+   * @param _timestamp The timestamp to get the current period for.
+   * @return period The period that the given timestamp falls in.
+   */
   function _getTimestampPeriod(uint32 _timestamp) private view returns (uint32 period) {
     if (_timestamp <= periodOffset) {
       return 0;
