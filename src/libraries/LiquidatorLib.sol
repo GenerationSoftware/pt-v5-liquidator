@@ -59,13 +59,13 @@ library LiquidatorLib {
           exchangeRateSmoothing
         )
       );
-    console2.log("~~~");
-    console2.log("percentCompleted", convert(percentCompleted));
-    console2.log("exchangeRateSmoothing", SD59x18.unwrap(exchangeRateSmoothing));
-    console2.log("phaseTwoRangeRate", SD59x18.unwrap(phaseTwoRangeRate));
-    console2.log("phaseTwoDurationPercentHalved", SD59x18.unwrap(phaseTwoDurationPercentHalved));
-    console2.log("targetExchangeRate", SD59x18.unwrap(targetExchangeRate));
-    console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
+    // console2.log("~~~");
+    // console2.log("percentCompleted", convert(percentCompleted));
+    // console2.log("exchangeRateSmoothing", SD59x18.unwrap(exchangeRateSmoothing));
+    // console2.log("phaseTwoRangeRate", SD59x18.unwrap(phaseTwoRangeRate));
+    // console2.log("phaseTwoDurationPercentHalved", SD59x18.unwrap(phaseTwoDurationPercentHalved));
+    // console2.log("targetExchangeRate", SD59x18.unwrap(targetExchangeRate));
+    // console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
   }
 
   function getExchangeRatePhase2(
@@ -75,11 +75,11 @@ library LiquidatorLib {
   ) internal view returns (SD59x18 exchangeRate) {
     // f(x)= targetExchangeRate + phaseTwoRangeRate * (x - 50)
     exchangeRate = targetExchangeRate.add(phaseTwoRangeRate.mul(percentCompleted.sub(convert(50))));
-    console2.log("~~~");
-    console2.log("percentCompleted", convert(percentCompleted));
-    console2.log("phaseTwoRangeRate", SD59x18.unwrap(phaseTwoRangeRate));
-    console2.log("targetExchangeRate", SD59x18.unwrap(targetExchangeRate));
-    console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
+    // console2.log("~~~");
+    // console2.log("percentCompleted", convert(percentCompleted));
+    // console2.log("phaseTwoRangeRate", SD59x18.unwrap(phaseTwoRangeRate));
+    // console2.log("targetExchangeRate", SD59x18.unwrap(targetExchangeRate));
+    // console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
   }
 
   function getExchangeRatePhase3(
@@ -103,12 +103,12 @@ library LiquidatorLib {
         )
       );
 
-    console2.log("~~~");
-    console2.log("percentCompleted", convert(percentCompleted));
-    console2.log("exchangeRateSmoothing", SD59x18.unwrap(exchangeRateSmoothing));
-    console2.log("phaseTwoRangeRate", SD59x18.unwrap(phaseTwoRangeRate));
-    console2.log("phaseTwoDurationPercentHalved", SD59x18.unwrap(phaseTwoDurationPercentHalved));
-    console2.log("targetExchangeRate", SD59x18.unwrap(targetExchangeRate));
-    console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
+    // console2.log("~~~");
+    // console2.log("percentCompleted", convert(percentCompleted));
+    // console2.log("exchangeRateSmoothing", SD59x18.unwrap(exchangeRateSmoothing));
+    // console2.log("phaseTwoRangeRate", SD59x18.unwrap(phaseTwoRangeRate));
+    // console2.log("phaseTwoDurationPercentHalved", SD59x18.unwrap(phaseTwoDurationPercentHalved));
+    // console2.log("targetExchangeRate", SD59x18.unwrap(targetExchangeRate));
+    // console2.log("exchangeRate", SD59x18.unwrap(exchangeRate));
   }
 }

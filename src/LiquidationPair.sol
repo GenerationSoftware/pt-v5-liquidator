@@ -10,21 +10,7 @@ import { SD59x18, convert, MAX_SD59x18 } from "prb-math/SD59x18.sol";
 /**
  * @title PoolTogether Liquidation Pair
  * @author PoolTogether Inc. Team
- * @notice The LiquidationPair is a UniswapV2-like pair that allows the liquidation of tokens
- *          from an ILiquidationSource. Users can swap tokens in exchange for the tokens available.
- *          The LiquidationPair implements a virtual reserve system that results in the value
- *          tokens available from the ILiquidationSource to decay over time relative to the value
- *          of the token swapped in.
- * @dev Each swap consists of four steps:
- *       1. A virtual buyback of the tokens available from the ILiquidationSource. This ensures
- *          that the value of the tokens available from the ILiquidationSource decays as
- *          tokens accrue.
- *      2. The main swap of tokens the user requested.
- *      3. A virtual swap that is a small multiplier applied to the users swap. This is to
- *          push the value of the tokens being swapped back up towards the market value.
- *      4. A scaling of the virtual reserves. This is to ensure that the virtual reserves
- *          are large enough such that the next swap will have a realistic impact on the virtual
- *          reserves.
+ * @notice The LiquidationPair sells tokens on through Dutch Auctions over the course of defined a period of time. The exchange rate traverses from infinity to zero every period, hitting a target exchange rate in the middle of the period and allowing for controlled price exploration surrounding the target exchange rate.
  */
 contract LiquidationPair is ILiquidationPair {
   /* ============ Variables ============ */
@@ -34,10 +20,12 @@ contract LiquidationPair is ILiquidationPair {
   address public immutable tokenOut;
   SD59x18 public targetExchangeRate; // tokenIn/tokenOut.
   SD59x18 public nextTargetExchangeRate; // tokenIn/tokenOut.
-  uint32 public lastSwapPeriod; // The period of the last swap. Used for determining when to update the target exchange rate.
+  SD59x18 public maxAmountOutThisPeriod; // The maximum amount of tokenOut that can be liquidated for period N. The total amount accured during period N-1.
   SD59x18 public phaseTwoDurationPercent; // % of time to traverse during phase 2.
   SD59x18 public phaseTwoRangePercent; // % of target exchange rate to traverse during phase 2.
   SD59x18 public exchangeRateSmoothing = convert(5); // Smooths the curve when the exchange rate is in phase 1 or phase 3.
+
+  uint32 public currentPeriod; // The current period that the state reflects.
 
   SD59x18 public immutable phaseTwoDurationPercentHalved;
   SD59x18 public immutable phaseTwoRangePercentHalved;
@@ -68,6 +56,19 @@ contract LiquidationPair is ILiquidationPair {
     uint128 virtualReserveIn,
     uint128 virtualReserveOut
   );
+
+  /* ============ Modifiers ============ */
+
+  modifier updatePeriodState() {
+    uint32 currentPeriod_ = _getTimestampPeriod(uint32(block.timestamp));
+
+    if (currentPeriod_ != currentPeriod) {
+      currentPeriod = currentPeriod_;
+      maxAmountOutThisPeriod = convert(int(_availableReserveOut()));
+      targetExchangeRate = nextTargetExchangeRate;
+    }
+    _;
+  }
 
   /* ============ Constructor ============ */
 
@@ -116,11 +117,14 @@ contract LiquidationPair is ILiquidationPair {
   }
 
   /// @inheritdoc ILiquidationPair
-  function maxAmountIn() external view returns (uint256) {}
+  function maxAmountIn() external updatePeriodState returns (uint256) {
+    (SD59x18 amountIn, ) = _computeExactAmountIn(maxAmountOutThisPeriod);
+    return uint(convert(amountIn));
+  }
 
   /// @inheritdoc ILiquidationPair
-  function maxAmountOut() external view returns (uint256) {
-    return _availableReserveOut();
+  function maxAmountOut() external updatePeriodState returns (uint256) {
+    return uint(convert(maxAmountOutThisPeriod));
   }
 
   function getTimeElapsed() external view returns (uint32) {
@@ -154,7 +158,7 @@ contract LiquidationPair is ILiquidationPair {
     address _receiver,
     uint256 _amountIn,
     uint256 _amountOutMin
-  ) external returns (uint256) {
+  ) external updatePeriodState returns (uint256) {
     return
       uint(
         convert(_swapExactAmountIn(_receiver, convert(int(_amountIn)), convert(int(_amountOutMin))))
@@ -165,7 +169,7 @@ contract LiquidationPair is ILiquidationPair {
     address _account,
     SD59x18 _amountIn,
     SD59x18 _amountOutMin
-  ) external returns (SD59x18) {
+  ) external updatePeriodState returns (SD59x18) {
     return _swapExactAmountIn(_account, _amountIn, _amountOutMin);
   }
 
@@ -174,7 +178,7 @@ contract LiquidationPair is ILiquidationPair {
     address _receiver,
     uint256 _amountOut,
     uint256 _amountInMax
-  ) external returns (uint256) {
+  ) external updatePeriodState returns (uint256) {
     return
       uint(
         convert(
@@ -187,44 +191,30 @@ contract LiquidationPair is ILiquidationPair {
     address _account,
     SD59x18 _amountOut,
     SD59x18 _amountInMax
-  ) external returns (SD59x18) {
+  ) external updatePeriodState returns (SD59x18) {
     return _swapExactAmountOut(_account, _amountOut, _amountInMax);
   }
 
   /// @inheritdoc ILiquidationPair
-  function computeExactAmountIn(uint256 _amountOut) external returns (uint256) {
+  function computeExactAmountIn(uint256 _amountOut) external updatePeriodState returns (uint256) {
     (SD59x18 amountIn, ) = _computeExactAmountIn(convert(int256(_amountOut)));
     return uint256(convert(amountIn));
   }
 
-  function computeExactAmountIn(SD59x18 _amountOut) external returns (SD59x18) {
+  function computeExactAmountIn(SD59x18 _amountOut) external updatePeriodState returns (SD59x18) {
     (SD59x18 amountIn, ) = _computeExactAmountIn(_amountOut);
     return amountIn;
   }
 
   /// @inheritdoc ILiquidationPair
-  function computeExactAmountOut(uint256 _amountIn) external returns (uint256) {
+  function computeExactAmountOut(uint256 _amountIn) external updatePeriodState returns (uint256) {
     (SD59x18 amountOut, ) = _computeExactAmountOut(convert(int256(_amountIn)));
     return uint256(convert(amountOut));
   }
 
-  function computeExactAmountOut(SD59x18 _amountIn) external returns (SD59x18) {
+  function computeExactAmountOut(SD59x18 _amountIn) external updatePeriodState returns (SD59x18) {
     (SD59x18 amountOut, ) = _computeExactAmountOut(_amountIn);
     return amountOut;
-  }
-
-  function computeExactAmountIn(
-    SD59x18 _amountOut,
-    SD59x18 exchangeRate
-  ) external pure returns (SD59x18) {
-    return _computeExactAmountIn(_amountOut, exchangeRate);
-  }
-
-  function computeExactAmountOut(
-    SD59x18 _amountIn,
-    SD59x18 exchangeRate
-  ) external pure returns (SD59x18) {
-    return _computeExactAmountOut(_amountIn, exchangeRate);
   }
 
   function getExchangeRate(
@@ -253,15 +243,10 @@ contract LiquidationPair is ILiquidationPair {
     SD59x18 _amountIn,
     SD59x18 _amountOutMin
   ) internal returns (SD59x18) {
-    uint32 period = _getTimestampPeriod(uint32(block.timestamp));
-
     (SD59x18 amountOut, SD59x18 exchangeRate) = _computeExactAmountOut(_amountIn);
 
     require(amountOut.gte(_amountOutMin), "LiquidationPair/insufficient-amount-out");
-    if (exchangeRate.gt(convert(0))) {
-      _updateNextTargetExchangeRate(exchangeRate);
-    }
-    _updateLastSwapPeriod(period);
+    _updateState(amountOut, exchangeRate);
     _swap(_account, amountOut, _amountIn);
 
     return amountOut;
@@ -272,37 +257,20 @@ contract LiquidationPair is ILiquidationPair {
     SD59x18 _amountOut,
     SD59x18 _amountInMax
   ) internal returns (SD59x18) {
-    uint32 period = _getTimestampPeriod(uint32(block.timestamp));
-
     (SD59x18 amountIn, SD59x18 exchangeRate) = _computeExactAmountIn(_amountOut);
 
     require(amountIn.lte(_amountInMax), "LiquidationPair/amount-in-exceeds-max");
-    if (exchangeRate.gt(convert(0))) {
-      _updateNextTargetExchangeRate(exchangeRate);
-    }
-    _updateLastSwapPeriod(period);
+    _updateState(_amountOut, exchangeRate);
     _swap(_account, _amountOut, amountIn);
 
     return amountIn;
   }
 
-  function _updateNextTargetExchangeRate(SD59x18 _exchangeRate) internal {
-    nextTargetExchangeRate = nextTargetExchangeRate.add(_exchangeRate).div(convert(2));
-  }
-
-  function _updateLastSwapPeriod(uint32 _period) internal {
-    if (_period > lastSwapPeriod) {
-      lastSwapPeriod = _period;
+  function _updateState(SD59x18 _amountOut, SD59x18 _exchangeRate) internal {
+    if (_exchangeRate.gt(convert(0))) {
+      nextTargetExchangeRate = nextTargetExchangeRate.add(_exchangeRate).div(convert(2));
     }
-  }
-
-  function _getTargetExchangeRate() internal returns (SD59x18) {
-    uint32 period = _getTimestampPeriod(uint32(block.timestamp));
-    if (period > lastSwapPeriod) {
-      targetExchangeRate = nextTargetExchangeRate;
-      return targetExchangeRate;
-    }
-    return targetExchangeRate;
+    maxAmountOutThisPeriod = maxAmountOutThisPeriod.sub(_amountOut);
   }
 
   // Calculate the slope of the curve for phase 2.
@@ -326,7 +294,7 @@ contract LiquidationPair is ILiquidationPair {
         exchangeRateSmoothing,
         _getPhaseTwoRangeRate(),
         phaseTwoDurationPercentHalved,
-        _getTargetExchangeRate()
+        targetExchangeRate
       )
     );
 
@@ -345,14 +313,7 @@ contract LiquidationPair is ILiquidationPair {
       return (MAX_SD59x18, convert(0));
     }
 
-    return (_computeExactAmountIn(_amountOut, exchangeRate), exchangeRate);
-  }
-
-  function _computeExactAmountIn(
-    SD59x18 _amountOut,
-    SD59x18 exchangeRate
-  ) internal pure returns (SD59x18) {
-    return _amountOut.div(exchangeRate);
+    return (_amountOut.div(exchangeRate), exchangeRate);
   }
 
   // NOTE: If we shortcircuit do to an over/underflow, we return exchange rate of 0. No update action is taken.
@@ -367,7 +328,7 @@ contract LiquidationPair is ILiquidationPair {
         exchangeRateSmoothing,
         _getPhaseTwoRangeRate(),
         phaseTwoDurationPercentHalved,
-        _getTargetExchangeRate()
+        targetExchangeRate
       )
     );
 
@@ -386,14 +347,7 @@ contract LiquidationPair is ILiquidationPair {
       return (MAX_SD59x18, convert(0));
     }
 
-    return (_computeExactAmountOut(_amountIn, exchangeRate), exchangeRate);
-  }
-
-  function _computeExactAmountOut(
-    SD59x18 _amountIn,
-    SD59x18 exchangeRate
-  ) internal pure returns (SD59x18) {
-    return _amountIn.mul(exchangeRate);
+    return (_amountIn.mul(exchangeRate), exchangeRate);
   }
 
   /**

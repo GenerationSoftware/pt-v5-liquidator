@@ -47,6 +47,36 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
       drawLength,
       drawOffset
     );
+
+    // Set up mock
+    mockLiquidatableBalanceOf(source, tokenOut, 0);
+  }
+
+  function testMaxAmountOut() public {
+    // Period 0
+    mockLiquidatableBalanceOf(source, tokenOut, 1e18);
+    vm.warp(drawOffset);
+    assertEq(pair.maxAmountOut(), 0);
+
+    // Period 1
+    vm.warp(drawOffset + 1 seconds);
+    assertEq(pair.maxAmountOut(), 1e18); // Update amount of yield available in state
+    mockLiquidatableBalanceOf(source, tokenOut, 2e18); // Increase amount of yield available
+    vm.warp(drawOffset + drawLength / 2);
+    assertEq(pair.maxAmountOut(), 1e18);
+    vm.warp(drawOffset + drawLength);
+    assertEq(pair.maxAmountOut(), 1e18);
+
+    // Period 2
+    vm.warp(drawOffset + drawLength + 1 seconds);
+    assertEq(pair.maxAmountOut(), 2e18); // Update amount of yield available in state
+    mockLiquidatableBalanceOf(source, tokenOut, 3e18); // Increase amount of yield available
+    vm.warp(drawOffset + (drawLength * 2));
+    assertEq(pair.maxAmountOut(), 2e18);
+
+    // Period 3
+    vm.warp(drawOffset + (drawLength * 2) + 1 seconds);
+    assertEq(pair.maxAmountOut(), 3e18);
   }
 
   function testGetTimestampPeriod() public {
@@ -252,109 +282,109 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     assertEq(phase, 1);
   }
 
-  // Exchange rate is IN per OUT
-  function testcomputeExactAmountIn_WithExchangeRate() public {
-    SD59x18 amountIn;
-    SD59x18 amountOut;
-    SD59x18 exchangeRate;
+  // // Exchange rate is IN per OUT
+  // function testcomputeExactAmountIn_WithExchangeRate() public {
+  //   SD59x18 amountIn;
+  //   SD59x18 amountOut;
+  //   SD59x18 exchangeRate;
 
-    // 1 IN : 1 OUT
-    exchangeRate = convert(1);
-    // With .5 OUT -> .5 IN
-    amountOut = SD59x18.wrap(50e16);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 50e16);
-    // With 1 OUT -> 1 IN
-    amountOut = convert(1);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 1e18);
-    // With 2 OUT -> 2 IN
-    amountOut = convert(2);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 2e18);
+  //   // 1 IN : 1 OUT
+  //   exchangeRate = convert(1);
+  //   // With .5 OUT -> .5 IN
+  //   amountOut = SD59x18.wrap(50e16);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 50e16);
+  //   // With 1 OUT -> 1 IN
+  //   amountOut = convert(1);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 1e18);
+  //   // With 2 OUT -> 2 IN
+  //   amountOut = convert(2);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 2e18);
 
-    // 1 IN : 2 OUT
-    exchangeRate = SD59x18.wrap(50e16);
-    // With .5 OUT -> .25 IN
-    amountOut = SD59x18.wrap(50e16);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 1e18);
-    // With 1 OUT -> .5 IN
-    amountOut = convert(1);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 2e18);
-    // With 2 OUT -> 1 IN
-    amountOut = convert(2);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 4e18);
+  //   // 1 IN : 2 OUT
+  //   exchangeRate = SD59x18.wrap(50e16);
+  //   // With .5 OUT -> .25 IN
+  //   amountOut = SD59x18.wrap(50e16);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 1e18);
+  //   // With 1 OUT -> .5 IN
+  //   amountOut = convert(1);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 2e18);
+  //   // With 2 OUT -> 1 IN
+  //   amountOut = convert(2);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 4e18);
 
-    // 2 IN : 1 OUT
-    exchangeRate = convert(2);
-    // With .5 OUT -> 1 IN
-    amountOut = SD59x18.wrap(50e16);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 25e16);
-    // With 1 OUT -> 2 IN
-    amountOut = convert(1);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 50e16);
-    // With 2 OUT -> 4 IN
-    amountOut = convert(2);
-    amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
-    assertEq(SD59x18.unwrap(amountIn), 1e18);
-  }
+  //   // 2 IN : 1 OUT
+  //   exchangeRate = convert(2);
+  //   // With .5 OUT -> 1 IN
+  //   amountOut = SD59x18.wrap(50e16);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 25e16);
+  //   // With 1 OUT -> 2 IN
+  //   amountOut = convert(1);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 50e16);
+  //   // With 2 OUT -> 4 IN
+  //   amountOut = convert(2);
+  //   amountIn = pair.computeExactAmountIn(amountOut, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountIn), 1e18);
+  // }
 
-  // Exchange rate is IN per OUT
-  function testcomputeExactAmountOut_WithExchangeRate() public {
-    SD59x18 amountIn;
-    SD59x18 amountOut;
-    SD59x18 exchangeRate;
+  // // Exchange rate is IN per OUT
+  // function testcomputeExactAmountOut_WithExchangeRate() public {
+  //   SD59x18 amountIn;
+  //   SD59x18 amountOut;
+  //   SD59x18 exchangeRate;
 
-    // 1 IN : 1 OUT
-    exchangeRate = convert(1);
-    // With .5 IN -> .5 OUT
-    amountIn = SD59x18.wrap(50e16);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 50e16);
-    // With 1 IN -> 1 OUT
-    amountIn = convert(1);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 1e18);
-    // With 2 IN -> 2 OUT
-    amountIn = convert(2);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 2e18);
+  //   // 1 IN : 1 OUT
+  //   exchangeRate = convert(1);
+  //   // With .5 IN -> .5 OUT
+  //   amountIn = SD59x18.wrap(50e16);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 50e16);
+  //   // With 1 IN -> 1 OUT
+  //   amountIn = convert(1);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 1e18);
+  //   // With 2 IN -> 2 OUT
+  //   amountIn = convert(2);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 2e18);
 
-    // 1 IN : 2 OUT
-    exchangeRate = SD59x18.wrap(50e16);
-    // With .5 IN -> 1 OUT
-    amountIn = SD59x18.wrap(50e16);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 25e16);
-    // With 1 IN -> 2 OUT
-    amountIn = convert(1);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 50e16);
-    // With 2 IN -> 4 OUT
-    amountIn = convert(2);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 1e18);
+  //   // 1 IN : 2 OUT
+  //   exchangeRate = SD59x18.wrap(50e16);
+  //   // With .5 IN -> 1 OUT
+  //   amountIn = SD59x18.wrap(50e16);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 25e16);
+  //   // With 1 IN -> 2 OUT
+  //   amountIn = convert(1);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 50e16);
+  //   // With 2 IN -> 4 OUT
+  //   amountIn = convert(2);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 1e18);
 
-    // 2 IN : 1 OUT
-    exchangeRate = convert(2);
-    // With .5 IN -> .25 OUT
-    amountIn = SD59x18.wrap(50e16);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 1e18);
-    // With 1 IN -> .5 OUT
-    amountIn = convert(1);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 2e18);
-    // With 2 IN -> 1 OUT
-    amountIn = convert(2);
-    amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
-    assertEq(SD59x18.unwrap(amountOut), 4e18);
-  }
+  //   // 2 IN : 1 OUT
+  //   exchangeRate = convert(2);
+  //   // With .5 IN -> .25 OUT
+  //   amountIn = SD59x18.wrap(50e16);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 1e18);
+  //   // With 1 IN -> .5 OUT
+  //   amountIn = convert(1);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 2e18);
+  //   // With 2 IN -> 1 OUT
+  //   amountIn = convert(2);
+  //   amountOut = pair.computeExactAmountOut(amountIn, exchangeRate);
+  //   assertEq(SD59x18.unwrap(amountOut), 4e18);
+  // }
 
   function testcomputeExactAmountIn_WithTime_DefaultPair_PhaseTransition() public {
     SD59x18 amountIn;
@@ -601,5 +631,15 @@ contract SingleDutchAuctionLiquidationPair is BaseSetup {
     vm.warp(drawOffset + drawLength + 1 seconds);
     amountOut = pair.computeExactAmountOut(amountIn);
     assertEq(SD59x18.unwrap(amountOut), 0);
+  }
+
+  //////////////////// Mocks ////////////////////
+
+  function mockLiquidatableBalanceOf(address _source, address _tokenOut, uint256 _result) internal {
+    vm.mockCall(
+      _source,
+      abi.encodeWithSelector(ILiquidationSource.liquidatableBalanceOf.selector, _tokenOut),
+      abi.encode(_result)
+    );
   }
 }
