@@ -8,8 +8,6 @@
 
 # PoolTogether - Liquidator Contracts
 
-> TODO: Coveralls tag, coverage
-
 [![built-with openzeppelin](https://img.shields.io/badge/built%20with-OpenZeppelin-3677FF)](https://docs.openzeppelin.com/)
 ![MIT license](https://img.shields.io/badge/license-MIT-blue)
 
@@ -71,4 +69,5 @@ forge coverage
 
 ### Notes
 
-`uint112` - Uniswap V2 limits to this as a safe maximum. For an 18 decimal token, this is more than a million billion tokens (1e15)
+- [Graphs For Pricing Algorithm](https://www.desmos.com/calculator/27cmpemihc)
+  - ![Basic Pricing Algorithm Graph](./exchange-rate-curve.png)
